@@ -1,0 +1,19 @@
+# Env
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# Go debug / build
+**/__debug_bin*
+*.exe
+*.out
+*.test
+
+# Go workspace
+go.work
+go.work.sum
+
+# Local configs
+config/local.yaml
