@@ -7,11 +7,14 @@ import (
 )
 
 type Connection struct {
-	conn    *websocket.Conn
-	send    chan []byte
-	chatIDs map[int64]struct{}
+	conn      *websocket.Conn
+	send      chan []byte
+	chatIDs   map[int64]struct{}
+	userID    int64
 	closeOnce sync.Once
 }
+
+func (c *Connection) UserID() int64 { return c.userID }
 
 type SubscribeCmd struct {
 	c       *Connection
@@ -19,8 +22,9 @@ type SubscribeCmd struct {
 }
 
 type BroadcastCmd struct {
-	ChatID  int64
-	Payload []byte
+	ChatID      int64
+	Payload     []byte
+	ExcludeUser int64
 }
 
 type Hub struct {
@@ -31,11 +35,12 @@ type Hub struct {
 	chats      map[int64]map[*Connection]struct{}
 }
 
-func NewConnection(conn *websocket.Conn) *Connection {
+func NewConnection(conn *websocket.Conn, userID int64) *Connection {
 	return &Connection{
-		conn:  conn,
-		send: make(chan []byte, 128),
+		conn:    conn,
+		send:    make(chan []byte, 128),
 		chatIDs: make(map[int64]struct{}),
+		userID:  userID,
 	}
 }
 
@@ -44,7 +49,7 @@ func NewHub() *Hub {
 		register:   make(chan *Connection, 64),
 		unregister: make(chan *Connection, 64),
 		subscribe:  make(chan SubscribeCmd, 64),
-		broadcast: 	make(chan BroadcastCmd, 256),
+		broadcast:  make(chan BroadcastCmd, 256),
 		chats:      make(map[int64]map[*Connection]struct{}),
 	}
 }
@@ -78,9 +83,17 @@ func (h *Hub) Run() {
 				room[cmd.c] = struct{}{}
 				cmd.c.chatIDs[chatID] = struct{}{}
 			}
+
 		case b := <-h.broadcast:
 			room := h.chats[b.ChatID]
+			if room == nil {
+				continue
+			}
+
 			for c := range room {
+				if b.ExcludeUser != 0 && c.userID == b.ExcludeUser {
+					continue
+				}
 				c.Send(b.Payload)
 			}
 		}
@@ -104,22 +117,28 @@ func (h *Hub) Subscribe(c *Connection, chatIDs []int64) {
 
 func (h *Hub) Broadcast(chatID int64, payload []byte) {
 	h.broadcast <- BroadcastCmd{
-		ChatID:       chatID,
+		ChatID:  chatID,
 		Payload: payload,
 	}
 }
 
+func (h *Hub) BroadcastExceptUser(chatID int64, payload []byte, excludeUserID int64) {
+	h.broadcast <- BroadcastCmd{
+		ChatID:      chatID,
+		Payload:     payload,
+		ExcludeUser: excludeUserID,
+	}
+}
+
 func (c *Connection) Send(b []byte) {
-	// неблокирующая отправка (чтобы Hub/handler не зависли)
 	select {
 	case c.send <- b:
 	default:
-		// если клиент не успевает читать — просто дропаем (позже можно кикать)
 	}
 }
 
 func (c *Connection) CloseSend() {
-    c.closeOnce.Do(func() {
-        close(c.send)
-    })
+	c.closeOnce.Do(func() {
+		close(c.send)
+	})
 }

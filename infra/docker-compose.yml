@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  postgres:
+    image: postgres:16
+    container_name: hodatay-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: hodatay
+      POSTGRES_USER: gellert
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gellert -d hodatay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  minio_data:
+  pgdata:

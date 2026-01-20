@@ -12,6 +12,7 @@ import (
 	"github.com/kgellert/hodatay-messenger/internal/domain/chat"
 	resp "github.com/kgellert/hodatay-messenger/internal/lib/api/response"
 	"github.com/kgellert/hodatay-messenger/internal/lib/logger/sl"
+	"github.com/kgellert/hodatay-messenger/internal/tempuser"
 )
 
 type GetChatsResponse struct {
@@ -31,14 +32,16 @@ type ChatsService interface {
 
 func GetChats(log *slog.Logger, chatsService ChatsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "handlers.chats.get.NewChatsHandler"
+		const op = "handlers.chats.get.chats"
 
 		log = log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		chats, err := chatsService.GetChats(r.Context(), 1)
+		uid := tempuser.UserID(r)
+
+		chats, err := chatsService.GetChats(r.Context(), uid)
 
 		if err != nil { // обработать конкретные ошибки
 			log.Error("Failed to get chats", sl.Err(err)) // Добавить кастомную обработку ошибки
@@ -59,19 +62,19 @@ func GetChats(log *slog.Logger, chatsService ChatsService) http.HandlerFunc {
 
 func GetChat(log *slog.Logger, chatsService ChatsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "handlers.chats.get.NewChatHandler"
+		const op = "handlers.chats.get.chat"
 
 		log = log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		chatIDStr := chi.URLParam(r, "chatID")
+		chatIDStr := chi.URLParam(r, "chatId")
 		chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 		if err != nil || chatID <= 0 {
 			log.Error("invalid chatID", sl.Err(err))
 			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.Error("invalid chatID"))
+			render.JSON(w, r, resp.Error("invalid chatId"))
 			return
 		}
 

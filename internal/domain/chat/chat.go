@@ -8,9 +8,9 @@ import (
 type ChatListItem struct {
 	ID              	int64       		`json:"id" db:"chat_id"`
 	Users           	[]user.User 		`json:"users"`
-	LastMessage     	message.Message `json:"lastMessage" db:"last_message"`
-	UnreadCount 			int64 					`json:"unreadCount" db:"unread_count"`
-	OthersMinLastReadMessageID int64  `json:"othersMinLastReadMessageID" db:"others_min_last_read_message_id"`
+	LastMessage     	message.Message `json:"last_message" db:"last_message"`
+	UnreadCount 			int64 					`json:"unread_count" db:"unread_count"`
+	OthersMaxLastReadMessageID int64  `json:"others_max_last_read_message_id" db:"others_max_last_read_message_id"`
 }
 
 type ChatInfo struct {

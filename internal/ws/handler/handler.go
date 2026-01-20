@@ -9,12 +9,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
 	"github.com/kgellert/hodatay-messenger/internal/lib/logger/sl"
+	"github.com/kgellert/hodatay-messenger/internal/tempuser"
 	"github.com/kgellert/hodatay-messenger/internal/ws/hub"
 )
 
 type ClientMsg struct {
 	Type    string  `json:"type"`
-	ChatIDs []int64 `json:"chatIds"`
+	ChatIDs []int64 `json:"chat_ids"`
 }
 
 var upgrader = websocket.Upgrader{
@@ -38,12 +39,13 @@ func WSHandler(h *hub.Hub, log *slog.Logger) http.HandlerFunc {
 		}
 		defer conn.Close()
 
-		hc := hub.NewConnection(conn)
+		userID := tempuser.UserID(r)
+
+		hc := hub.NewConnection(conn, userID)
 		go hc.WritePump()
 
 		h.Register(hc)
 		defer h.Unregister(hc)
-
 			_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 			conn.SetPongHandler(func(string) error {
 			_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
