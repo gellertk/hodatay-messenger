@@ -31,10 +31,12 @@ CREATE TABLE messages (
   chat_id BIGINT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   sender_user_id BIGINT NOT NULL,
   text TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reply_to_message_id BIGINT REFERENCES messages(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_messages_chat_created ON messages(chat_id, created_at);
+CREATE INDEX idx_messages_reply_to ON messages(reply_to_message_id) WHERE reply_to_message_id IS NOT NULL;
 
 -- Файлы
 CREATE TABLE attachments (
@@ -42,9 +44,40 @@ CREATE TABLE attachments (
   message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
   key TEXT NOT NULL,
   content_type TEXT NOT NULL,
-  filename TEXT,
+  filename TEXT NOT NULL,
+  size BIGINT NOT NULL,
+  width INT,
+  height INT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX idx_attachments_key ON attachments(key);
-CREATE INDEX idx_attachments_message_id ON attachments(message_id);
+ALTER TABLE attachments
+ADD CONSTRAINT attachments_dims_chk
+CHECK (
+  (width IS NULL AND height IS NULL)
+  OR (width > 0 AND height > 0)
+);
+
+DROP INDEX IF EXISTS idx_attachments_key;
+CREATE INDEX idx_attachments_key ON attachments(key);
+CREATE INDEX idx_attachments_message_id_id ON attachments(message_id, id);
+
+-- Uploads: файл до привязки к сообщению (presigned -> ready -> used/failed)
+CREATE TABLE uploads (
+  id BIGSERIAL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  owner_user_id BIGINT NOT NULL,
+  original_filename TEXT,
+  client_content_type TEXT,
+  content_type TEXT,
+  size BIGINT,
+  width INT,
+  height INT,
+  status TEXT NOT NULL DEFAULT 'presigned', -- presigned | ready | used | failed
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ready_at   TIMESTAMPTZ,
+  used_at    TIMESTAMPTZ
+);
+
+CREATE INDEX idx_uploads_owner_created ON uploads(owner_user_id, created_at);
+CREATE INDEX idx_uploads_status_created ON uploads(status, created_at);

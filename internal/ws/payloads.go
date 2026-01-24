@@ -1,9 +1,9 @@
 package ws
 
-import "github.com/kgellert/hodatay-messenger/internal/domain/message"
+import "github.com/kgellert/hodatay-messenger/internal/messages"
 
 type MessageNewPayload struct {
-	Message message.Message `json:"message"`
+	Message messagesdomain.Message `json:"message"`
 }
 
 type MessageReadPayload struct {

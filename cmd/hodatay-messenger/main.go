@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	stdlog "log"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -13,18 +15,23 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 
+	chatshandler "github.com/kgellert/hodatay-messenger/internal/chats/handler"
+	chatsrepo "github.com/kgellert/hodatay-messenger/internal/chats/repo"
 	appConfig "github.com/kgellert/hodatay-messenger/internal/config"
-	"github.com/kgellert/hodatay-messenger/internal/http-server/handlers/chats"
-	messagesHandler "github.com/kgellert/hodatay-messenger/internal/http-server/handlers/messages"
-	uploadsHandler "github.com/kgellert/hodatay-messenger/internal/http-server/handlers/uploads"
-	mwLogger "github.com/kgellert/hodatay-messenger/internal/http-server/middleware/logger"
-	"github.com/kgellert/hodatay-messenger/internal/lib/logger/handlers/slogpretty"
-	"github.com/kgellert/hodatay-messenger/internal/lib/logger/sl"
-	"github.com/kgellert/hodatay-messenger/internal/storage/postgres"
-	tempuser "github.com/kgellert/hodatay-messenger/internal/tempuser"
-	"github.com/kgellert/hodatay-messenger/internal/uploads"
+	"github.com/kgellert/hodatay-messenger/internal/logger"
+	"github.com/kgellert/hodatay-messenger/internal/logger/handlers/slogpretty"
+	"github.com/kgellert/hodatay-messenger/internal/logger/sl"
+	messageshandler "github.com/kgellert/hodatay-messenger/internal/messages/handler"
+	messagesrepo "github.com/kgellert/hodatay-messenger/internal/messages/repo"
+	uploadshandler "github.com/kgellert/hodatay-messenger/internal/uploads/handler"
+	uploadsrepo "github.com/kgellert/hodatay-messenger/internal/uploads/repo"
+	uploadsservice "github.com/kgellert/hodatay-messenger/internal/uploads/service"
+	userhandlers "github.com/kgellert/hodatay-messenger/internal/users/handlers"
+	usersrepo "github.com/kgellert/hodatay-messenger/internal/users/repo"
 	ws "github.com/kgellert/hodatay-messenger/internal/ws/handler"
 	"github.com/kgellert/hodatay-messenger/internal/ws/hub"
 )
@@ -48,16 +55,10 @@ func main() {
 
 	log.Info("database dsn loaded", slog.String("dsn", cfg.DatabaseDSN))
 
-	storage, err := storage.New(ctx, cfg.DatabaseDSN)
-	if err != nil {
-		log.Error("failed to init storage", sl.Err(err))
-		os.Exit(1)
-	}
-
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Logger)
-	router.Use(mwLogger.New(log))
+	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
 
@@ -78,8 +79,8 @@ func main() {
 	)
 
 	if err != nil {
-    log.Error("failed to load aws config", sl.Err(err))
-    os.Exit(1)
+		log.Error("failed to load aws config", sl.Err(err))
+		os.Exit(1)
 	}
 
 	s3Client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
@@ -89,17 +90,28 @@ func main() {
 
 	presigner := s3.NewPresignClient(s3Client)
 
-	uploadService := uploads.NewService(bucket, presigner, s3Client)
+	db, err := initDB(ctx, cfg.DatabaseDSN)
+	if err != nil {
+		log.Error("failed to init storage", sl.Err(err))
+		os.Exit(1)
+	}
 
-	mh := messagesHandler.New(
-		storage,
-		uploadService,
+	usersRepo := usersrepo.New(db)
+	chatsRepo := chatsrepo.New(db, usersRepo)
+	messagesRepo := messagesrepo.New(db)
+	uploadsRepo := uploadsrepo.New(db)
+
+	uploadsService := uploadsservice.New(bucket, presigner, s3Client, uploadsRepo)
+
+	chatsHandler := chatshandler.New(chatsRepo, log)
+	messagesHandler := messageshandler.New(
+		messagesRepo,
+		uploadsService,
 		h,
 		log,
 	)
-
-	uh := uploadsHandler.New(
-		uploadService,
+	uploadsHandler := uploadshandler.New(
+		uploadsService,
 		log,
 	)
 
@@ -120,19 +132,19 @@ func main() {
 	})
 
 	router.Group(func(r chi.Router) {
-		r.Use(tempuser.WithUser)
+		r.Use(userhandlers.WithUser)
 
-		r.Get("/chats", chatsHandler.GetChats(log, storage))
-		r.Get("/chats/{chatId}", chatsHandler.GetChat(log, storage))
+		r.Get("/chats", chatsHandler.GetChats())
+		r.Get("/chats/{chatId}", chatsHandler.GetChat())
 
 		r.Get("/ws", ws.WSHandler(h, log))
 
-		r.Post("/chats/{chatId}/messages", mh.SendMessage())
-		r.Patch("/chats/{chatId}/messages/read", mh.SetLastReadMessage())
-		r.Get("/chats/{chatId}/messages", mh.GetMessages())
+		r.Post("/chats/{chatId}/messages", messagesHandler.SendMessage())
+		r.Patch("/chats/{chatId}/messages/read", messagesHandler.SetLastReadMessage())
+		r.Get("/chats/{chatId}/messages", messagesHandler.GetMessages())
 
-		r.Post("/uploads/presign-upload", uh.PresignUpload())
-		r.Post("/uploads/presign-download", uh.PresignDownload())
+		r.Post("/uploads/presign-upload", uploadsHandler.PresignUpload())
+		r.Post("/uploads/presign-download", uploadsHandler.PresignDownload())
 	})
 
 	log.Info("starting server", slog.String("address", cfg.Address))
@@ -146,10 +158,29 @@ func main() {
 	}
 
 	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server")
+		log.Error("failed to start server", sl.Err(err))
+		os.Exit(1)
+	}
+}
+
+func initDB(ctx context.Context, dsn string) (*sqlx.DB, error) {
+	const op = "storage.postgres.New"
+
+	db, err := sqlx.Open("pgx", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("%s: open: %w", op, err)
 	}
 
-	log.Error("server stopped")
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(time.Hour)
+
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("%s: ping: %w", op, err)
+	}
+
+	return db, nil
 }
 
 func setupPrettySlog() *slog.Logger {

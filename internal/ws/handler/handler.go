@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
-	"github.com/kgellert/hodatay-messenger/internal/lib/logger/sl"
-	"github.com/kgellert/hodatay-messenger/internal/tempuser"
+	"github.com/kgellert/hodatay-messenger/internal/logger/sl"
+	userhandlers "github.com/kgellert/hodatay-messenger/internal/users/handlers"
 	"github.com/kgellert/hodatay-messenger/internal/ws/hub"
 )
 
@@ -39,15 +39,15 @@ func WSHandler(h *hub.Hub, log *slog.Logger) http.HandlerFunc {
 		}
 		defer conn.Close()
 
-		userID := tempuser.UserID(r)
+		userID := userhandlers.UserID(r)
 
 		hc := hub.NewConnection(conn, userID)
 		go hc.WritePump()
 
 		h.Register(hc)
 		defer h.Unregister(hc)
-			_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-			conn.SetPongHandler(func(string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetPongHandler(func(string) error {
 			_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 			return nil
 		})
