@@ -62,10 +62,10 @@ DROP INDEX IF EXISTS idx_attachments_key;
 CREATE INDEX idx_attachments_key ON attachments(key);
 CREATE INDEX idx_attachments_message_id_id ON attachments(message_id, id);
 
--- Uploads: файл до привязки к сообщению (presigned -> ready -> used/failed)
+-- Uploads
 CREATE TABLE uploads (
   id BIGSERIAL PRIMARY KEY,
-  key TEXT NOT NULL UNIQUE,
+  file_id TEXT NOT NULL UNIQUE,
   owner_user_id BIGINT NOT NULL,
   original_filename TEXT,
   client_content_type TEXT,
@@ -73,7 +73,7 @@ CREATE TABLE uploads (
   size BIGINT,
   width INT,
   height INT,
-  status TEXT NOT NULL DEFAULT 'presigned', -- presigned | ready | used | failed
+  status TEXT NOT NULL DEFAULT 'presigned', -- type UploadStatus
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ready_at   TIMESTAMPTZ,
   used_at    TIMESTAMPTZ

@@ -2,15 +2,11 @@ package uploadsrepo
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jmoiron/sqlx"
+	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
 )
-
-// type uploadsRepo interface {
-// 	CreateUpload(
-// 		ctx context.Context, key string, userID int64, filename, contentType *string,
-// 	) error
-// }
 
 type Repo struct {
 	db *sqlx.DB
@@ -21,17 +17,48 @@ func New(db *sqlx.DB) *Repo {
 }
 
 func (r *Repo) CreateUpload(
-	ctx context.Context, key string, userID int64, filename, contentType *string,
+	ctx context.Context, fileID string, userID int64, contentType string, filename *string,
 ) error {
 
 	_, err := r.db.ExecContext(
 		ctx,
 		`
-		INSERT INTO uploads (key, owner_user_id, original_filename, client_content_type)
+		INSERT INTO uploads (file_id, owner_user_id, original_filename, client_content_type)
 		VALUES ($1, $2, $3, $4)
 		`,
-		key, userID, filename, contentType,
+		fileID, userID, filename, contentType,
 	)
 
 	return err
+}
+
+func (r *Repo) ConfirmUpload(
+	ctx context.Context, userID int64, key string, contentType string, size int64, width, height *int,
+) error {
+
+	result, err := r.db.ExecContext(
+		ctx,
+		`
+		UPDATE uploads
+		SET content_type = $1, size = $2, width = $3, height = $4, status = $5
+		WHERE file_id = $6 AND owner_user_id = $7
+		`,
+		contentType, size, width, height, uploadsdomain.StatusReady, key, userID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("upload not found or access denied")
+	}
+
+	return nil
 }

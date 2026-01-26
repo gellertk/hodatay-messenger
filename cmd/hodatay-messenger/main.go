@@ -145,6 +145,7 @@ func main() {
 
 		r.Post("/uploads/presign-upload", uploadsHandler.PresignUpload())
 		r.Post("/uploads/presign-download", uploadsHandler.PresignDownload())
+		r.Post("/uploads/confirm", uploadsHandler.ConfirmUpload())
 	})
 
 	log.Info("starting server", slog.String("address", cfg.Address))

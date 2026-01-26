@@ -3,8 +3,11 @@ package uploadsservice
 import (
 	"context"
 	"errors"
+	"image"
 	"strings"
 	"time"
+	_ "image/jpeg"
+	_ "image/png"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -22,7 +25,7 @@ type service struct {
 	repo      uploadsdomain.Repo
 }
 
-func (s *service) PresignUpload(ctx context.Context, userID int64, filename, contentType *string) (string, string, error) {
+func (s *service) PresignUpload(ctx context.Context, userID int64, contentType string, filename *string) (string, string, error) {
 
 	key, err := uploadsdomain.GenerateKey()
 
@@ -33,10 +36,7 @@ func (s *service) PresignUpload(ctx context.Context, userID int64, filename, con
 	req := &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
-	}
-
-	if contentType != nil && *contentType != "" {
-		req.ContentType = contentType
+		ContentType: aws.String(contentType),
 	}
 
 	ps, err := s.presigner.PresignPutObject(ctx, req, func(po *s3.PresignOptions) {
@@ -47,7 +47,7 @@ func (s *service) PresignUpload(ctx context.Context, userID int64, filename, con
 		return "", "", err
 	}
 
-	s.repo.CreateUpload(ctx, key, userID, filename, contentType)
+	s.repo.CreateUpload(ctx, key, userID, contentType, filename)
 
 	return key, ps.URL, nil
 }
@@ -76,27 +76,55 @@ func (s *service) PresignDownload(ctx context.Context, key string) (string, erro
 	return ps.URL, nil
 }
 
-func (s *service) GetFileInfo(ctx context.Context, key string) (uploadsdomain.Attachment, error) {
-	headObj, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
+func (s *service) ConfirmUpload(ctx context.Context, userID int64, key string) error {
+
+	err := validateKey(key)
+
+	if err != nil {
+		return err
+	}
+
+	headObjc, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
 
 	if err != nil {
-		return uploadsdomain.Attachment{}, err
-	}
-
-	filename := key
-	if originName, ok := headObj.Metadata["original-filename"]; ok {
-		filename = originName
+		return err
 	}
 
 	contentType := ""
-	if headObj.ContentType != nil {
-		contentType = *headObj.ContentType
+	if headObjc.ContentType != nil {
+		contentType = *headObjc.ContentType
 	}
 
-	return uploadsdomain.Attachment{FileID: key, ContentType: contentType, Filename: filename}, nil
+	var size int64
+	if headObjc.ContentLength != nil {
+		size = *headObjc.ContentLength
+	}
+
+	if !strings.HasPrefix(contentType, "image/") {
+		return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil)
+	}
+
+	result, err := s.s3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+		Range:  aws.String("bytes=0-65535"),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	defer result.Body.Close()
+
+	config, _, err := image.DecodeConfig(result.Body)
+	if err != nil {
+		return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil)
+	}
+
+	return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, &config.Width, &config.Height)
 }
 
 func validateKey(key string) error {

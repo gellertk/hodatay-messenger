@@ -13,27 +13,85 @@ import (
 )
 
 type UploadsHandler struct {
-	Service uploadsdomain.Service
-	Log     *slog.Logger
+	service uploadsdomain.Service
+	log     *slog.Logger
 }
 
 func New(service uploadsdomain.Service, log *slog.Logger) *UploadsHandler {
 	return &UploadsHandler{
-		Service: service,
-		Log:     log,
+		service: service,
+		log:     log,
 	}
 }
 
 func (h *UploadsHandler) PresignUpload() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "handlers.uploads.PresignUpload"
+    return func(w http.ResponseWriter, r *http.Request) {
+        const op = "handlers.uploads.PresignUpload"
 
-		log := h.Log.With(
+        log := h.log.With(
+            slog.String("op", op),
+            slog.String("request_id", middleware.GetReqID(r.Context())),
+        )
+
+        var req uploadsdomain.PresignUploadRequest
+        if err := render.DecodeJSON(r.Body, &req); err != nil {
+            log.Warn("failed to decode request", sl.Err(err))
+            w.WriteHeader(http.StatusBadRequest)
+            render.JSON(w, r, response.Error("invalid request body"))
+            return
+        }
+
+        // Валидация ContentType
+        if req.ContentType == "" {
+            w.WriteHeader(http.StatusBadRequest)
+            render.JSON(w, r, response.Error("content_type is required"))
+            return
+        }
+
+        if !uploadsdomain.IsValidContentType(req.ContentType) {
+            log.Warn("invalid content type", slog.String("content_type", req.ContentType))
+            w.WriteHeader(http.StatusBadRequest)
+            render.JSON(w, r, response.Error("content_type not allowed"))
+            return
+        }
+
+        // Валидация Filename (опционально)
+        if req.Filename != nil && len(*req.Filename) > 255 {
+            w.WriteHeader(http.StatusBadRequest)
+            render.JSON(w, r, response.Error("filename too long"))
+            return
+        }
+
+        userID := userhandlers.UserID(r)
+
+        fileID, url, err := h.service.PresignUpload(r.Context(), userID, req.ContentType, req.Filename)
+        if err != nil {
+            log.Error("failed to presign upload", sl.Err(err))
+            w.WriteHeader(http.StatusInternalServerError)
+            render.JSON(w, r, response.Error("failed to generate upload url"))
+            return
+        }
+
+        render.JSON(w, r, uploadsdomain.PresignUploadHTTPResponse{
+            Response: response.OK(),
+            PresignUploadResponse: uploadsdomain.PresignUploadResponse{
+                FileID:    fileID,
+                UploadURL: url,
+            },
+        })
+    }
+}
+
+func (h *UploadsHandler) ConfirmUpload() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const op = "handlers.uploads.ConfirmUpload"
+
+		log := h.log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req presignUploadRequest
+		var req uploadsdomain.ConfirmUploadRequest
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
 			log.Error("invalid body", sl.Err(err))
 			render.JSON(w, r, response.Error("invalid body"))
@@ -42,7 +100,7 @@ func (h *UploadsHandler) PresignUpload() http.HandlerFunc {
 
 		userID := userhandlers.UserID(r)
 
-		key, url, err := h.Service.PresignUpload(r.Context(), userID, req.Filename, req.ContentType)
+		err := h.service.ConfirmUpload(r.Context(), userID, req.FileID)
 
 		if err != nil {
 			log.Error("presign upload error", sl.Err(err))
@@ -50,14 +108,6 @@ func (h *UploadsHandler) PresignUpload() http.HandlerFunc {
 			return
 		}
 
-		presignResponse := presignUploadResponse{
-			key,
-			url,
-		}
-
-		render.JSON(w, r, PresignUploadHTTPResponse{
-			Response:              response.OK(),
-			PresignUploadResponse: presignResponse,
-		})
+		render.JSON(w, r, response.OK())
 	}
 }

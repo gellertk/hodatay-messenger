@@ -1,10 +1,9 @@
 package uploadsdomain
 
-var allowedMimeTypes = map[string]string{
+var allowedContentTypes = map[string]string{
 	"image/jpeg":     ".jpg",
 	"image/png":      ".png",
 	"image/webp":     ".webp",
-	"image/gif":      ".gif",
 	"image/heic":     ".heic",
 	"image/heif":     ".heif",
 	"image/avif":     ".avif",
@@ -31,7 +30,7 @@ var allowedMimeTypes = map[string]string{
 	"video/webm": ".webm",
 }
 
-func ExtForMime(m string) (string, bool) {
-	ext, ok := allowedMimeTypes[m]
-	return ext, ok
+func IsValidContentType(ct string) bool {
+	_, exist := allowedContentTypes[ct]
+	return exist
 }

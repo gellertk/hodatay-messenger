@@ -95,24 +95,24 @@ func (h *Handler) SendMessage() http.HandlerFunc {
 
 		userID := userhandlers.UserID(r)
 
-		var messageAttachments = []uploads.Attachment{}
+		// var messageAttachments = []uploads.Attachment{}
 
-		for _, att := range req.Attachments {
-			fileInfo, err := h.uploadsService.GetFileInfo(r.Context(), att.FileID)
-			if err != nil {
-				log.Error("failed to get file info", sl.Err(err))
-				render.JSON(w, r, response.Error("failed to get file info"))
-				return
-			}
-			messageAttachments = append(messageAttachments, fileInfo)
-		}
+		// for _, att := range req.Attachments {
+		// 	fileInfo, err := h.uploadsService.GetFileInfo(r.Context(), att.FileID)
+		// 	if err != nil {
+		// 		log.Error("failed to get file info", sl.Err(err))
+		// 		render.JSON(w, r, response.Error("failed to get file info"))
+		// 		return
+		// 	}
+		// 	messageAttachments = append(messageAttachments, fileInfo)
+		// }
 
 		msg, err := h.messagesRepo.SendMessage(
 			r.Context(),
 			chatID,
 			userID,
 			req.Text,
-			messageAttachments,
+			req.Attachments,
 			req.ReplyToMessageID,
 		)
 

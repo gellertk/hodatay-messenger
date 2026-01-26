@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/kgellert/hodatay-messenger/internal/lib"
-	"github.com/kgellert/hodatay-messenger/internal/uploads/domain"
+	response "github.com/kgellert/hodatay-messenger/internal/lib"
+	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
 )
 
 type Repo interface {
-	SendMessage(ctx context.Context, chatID, userID int64, text string, attachments []uploadsdomain.Attachment, replyToMessageID *int64) (Message, error)
+	SendMessage(ctx context.Context, chatID, userID int64, text string, attachments []CreateMessageAttachment, replyToMessageID *int64) (Message, error)
 	GetMessages(ctx context.Context, chatID int64) ([]Message, error)
 	SetLastReadMessage(ctx context.Context, chatID, userID, lastReadMessageID int64) (int64, error)
 }
@@ -48,6 +48,16 @@ type Response struct {
 	Messages []Message `json:"messages,omitempty"`
 }
 
+type AttachmentRow struct {
+	ID          sql.NullInt64  `db:"id"`
+	FileID      sql.NullString `db:"file_id"`
+	ContentType sql.NullString `db:"content_type"`
+	Filename    sql.NullString `db:"filename"`
+	Size        sql.NullInt64  `db:"size"`
+	Width       sql.NullInt32  `db:"width"`
+	Height      sql.NullInt32  `db:"height"`
+}
+
 type MsgRow struct {
 	ID           int64     `db:"id"`
 	SenderUserID int64     `db:"sender_user_id"`
@@ -61,17 +71,6 @@ type MsgRow struct {
 		CreatedAt    sql.NullTime   `db:"created_at"`
 	} `db:"reply_to"`
 
-	Attachment struct {
-		ID          sql.NullInt64  `db:"id"`
-		Key         sql.NullString `db:"key"`
-		ContentType sql.NullString `db:"content_type"`
-		Filename    sql.NullString `db:"filename"`
-	} `db:"attachments"`
-
-	ReplyToAttachment struct {
-		ID          sql.NullInt64  `db:"id"`
-		Key         sql.NullString `db:"key"`
-		ContentType sql.NullString `db:"content_type"`
-		Filename    sql.NullString `db:"filename"`
-	} `db:"reply_to.attachments"`
+	Attachment        AttachmentRow `db:"attachments"`
+	ReplyToAttachment AttachmentRow `db:"reply_to.attachments"`
 }

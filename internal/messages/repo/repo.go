@@ -22,7 +22,7 @@ func (s *Repo) SendMessage(
 	chatID,
 	userID int64,
 	text string,
-	attachments []uploadsdomain.Attachment,
+	attachments []messagesdomain.CreateMessageAttachment,
 	replyToMessageID *int64,
 ) (messagesdomain.Message, error) {
 
@@ -54,12 +54,12 @@ func (s *Repo) SendMessage(
 			rm.created_at AS "reply_to.created_at",
 
 			ra.id AS "reply_to.attachments.id",
-			ra.key AS "reply_to.attachments.key",
+			ra.file_id AS "reply_to.attachments.file_id",
 			ra.content_type AS "reply_to.attachments.content_type",
 			ra.filename AS "reply_to.attachments.filename",
 			ra.size AS "reply_to.attachments.size",
 			ra.width AS "reply_to.attachments.width",
-			ra.height AS "reply_to.attachments.height",
+			ra.height AS "reply_to.attachments.height"
 
 		FROM inserted i
 		LEFT JOIN messages rm ON i.reply_to_message_id = rm.id
@@ -113,7 +113,7 @@ func (s *Repo) SendMessage(
 				if _, seen := seenAttIDs[aid]; !seen {
 					seenAttIDs[aid] = struct{}{}
 					replyTo.Attachments = append(replyTo.Attachments, uploadsdomain.Attachment{
-						FileID:      r.ReplyToAttachment.Key.String,
+						FileID:      r.ReplyToAttachment.FileID.String,
 						ContentType: r.ReplyToAttachment.ContentType.String,
 						Filename:    r.ReplyToAttachment.Filename.String,
 					})
@@ -124,23 +124,69 @@ func (s *Repo) SendMessage(
 		msg.ReplyTo = replyTo
 	}
 
+	atts := []uploadsdomain.Attachment{}
+
 	for _, att := range attachments {
-		_, err := tx.ExecContext(
+
+		var upload struct {
+			Size        int64  `db:"size"`
+			Width       *int   `db:"width"`
+			Height      *int   `db:"height"`
+			ContentType string `db:"content_type"`
+			Filename    string `db:"original_filename"`
+			Status      string `db:"status"`
+		}
+
+		err := tx.GetContext(
 			ctx,
-			`INSERT INTO attachments (message_id, key, content_type, filename)
-			VALUES ($1, $2, $3, $4)`,
-			msg.ID, att.FileID, att.ContentType, att.Filename,
+			&upload,
+			`
+			SELECT size, width, height, content_type, original_filename, status 
+			FROM uploads
+			WHERE file_id = $1 AND owner_user_id = $2
+			`,
+			att.FileID,
+			userID,
 		)
+
+		if err != nil {
+			return messagesdomain.Message{}, fmt.Errorf("%s: select upload: %w", op, err)
+		}
+
+		if upload.Status != string(uploadsdomain.StatusReady) {
+			return messagesdomain.Message{}, fmt.Errorf("%s: upload is not confirmed: %w", op, err)
+		}
+		
+		var attachment uploadsdomain.Attachment
+
+		err = tx.QueryRowxContext(
+			ctx,
+			`INSERT INTO attachments (message_id, file_id, content_type, filename, size, width, height)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING file_id, content_type, filename, size, width, height
+			`,
+			msg.ID, att.FileID, upload.ContentType, upload.Filename, upload.Size, upload.Width, upload.Height,
+		).Scan(
+			&attachment.FileID,
+			&attachment.ContentType,
+			&attachment.Filename,
+			&attachment.Size,
+			&attachment.Width,
+			&attachment.Height,
+		)
+
 		if err != nil {
 			return messagesdomain.Message{}, fmt.Errorf("%s: insert attachment: %w", op, err)
 		}
+
+		atts = append(atts, attachment)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return messagesdomain.Message{}, fmt.Errorf("%s: commit tx: %w", op, err)
 	}
 
-	msg.Attachments = attachments
+	msg.Attachments = atts
 
 	return msg, nil
 }
@@ -216,14 +262,20 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 			rm.created_at AS "reply_to.created_at",
 
 			a.id AS "attachments.id",
-			a.key AS "attachments.key",
+			a.file_id AS "attachments.file_id",
 			a.content_type AS "attachments.content_type",
 			a.filename AS "attachments.filename",
+			a.size AS "attachments.size",
+			a.width AS "attachments.width",
+			a.height AS "attachments.height",
 
 			ra.id AS "reply_to.attachments.id",
-			ra.key AS "reply_to.attachments.key",
+			ra.file_id AS "reply_to.attachments.file_id",
 			ra.content_type AS "reply_to.attachments.content_type",
-			ra.filename AS "reply_to.attachments.filename"
+			ra.filename AS "reply_to.attachments.filename",
+			ra.size AS "reply_to.attachments.size",
+			ra.width AS "reply_to.attachments.width",
+			ra.height AS "reply_to.attachments.height"
 		FROM messages m
 		LEFT JOIN messages rm ON m.reply_to_message_id = rm.id
 		LEFT JOIN attachments a ON a.message_id = m.id
@@ -266,12 +318,24 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 				seenMsgAtt[r.ID] = map[int64]struct{}{}
 			}
 			aid := r.Attachment.ID.Int64
+			var width, height *int
+			if r.Attachment.Width.Valid {
+				w := int(r.Attachment.Width.Int32)
+				width = &w
+			}
+			if r.Attachment.Height.Valid {
+				h := int(r.Attachment.Height.Int32)
+				height = &h
+			}
 			if _, ok := seenMsgAtt[r.ID][aid]; !ok {
 				seenMsgAtt[r.ID][aid] = struct{}{}
 				m.Attachments = append(m.Attachments, uploadsdomain.Attachment{
-					FileID:      r.Attachment.Key.String,
+					FileID:      r.Attachment.FileID.String,
 					ContentType: r.Attachment.ContentType.String,
 					Filename:    r.Attachment.Filename.String,
+					Size: r.Attachment.Size.Int64,
+					Width: width,
+					Height: height,
 				})
 			}
 		}
@@ -295,7 +359,7 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 				if _, ok := seenReplyAtt[r.ID][raid]; !ok {
 					seenReplyAtt[r.ID][raid] = struct{}{}
 					m.ReplyTo.Attachments = append(m.ReplyTo.Attachments, uploadsdomain.Attachment{
-						FileID:      r.ReplyToAttachment.Key.String,
+						FileID:      r.ReplyToAttachment.FileID.String,
 						ContentType: r.ReplyToAttachment.ContentType.String,
 						Filename:    r.ReplyToAttachment.Filename.String,
 					})
