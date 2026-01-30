@@ -8,10 +8,9 @@ import (
 	"github.com/kgellert/hodatay-messenger/internal/users/domain"
 )
 
-// type ChatsRow struct {
-// 	ChatID int64 `json:"chat_id" db:"chat_id"`
-// 	UserID int64 `json:"user_id" db:"user_id"`
-// }
+type CreateChatRequest struct {
+	UserIDs []int64 `json:"user_ids" db:"user_ids"`
+}
 
 type ChatsRow struct {
 	ChatID                     int64                  `db:"chat_id"`
@@ -36,15 +35,16 @@ type ChatInfo struct {
 
 type GetChatsResponse struct {
 	response.Response
-	Chats []ChatListItem `json:"chats,omitempty"`
+	Chats []ChatListItem `json:"chats"`
 }
 
 type GetChatResponse struct {
 	response.Response
-	Chat ChatInfo `json:"chat"`
+	Chat *ChatInfo `json:"chat"`
 }
 
 type ChatsService interface {
+	CreateChat(ctx context.Context, userIDs []int64) (ChatInfo, error)
 	GetChats(ctx context.Context, userID int64) ([]ChatListItem, error)
-	GetChat(ctx context.Context, chatID int64) (ChatInfo, error)
+	GetChat(ctx context.Context, chatID int64) (*ChatInfo, error)
 }

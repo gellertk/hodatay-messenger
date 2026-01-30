@@ -22,6 +22,7 @@ import (
 	chatshandler "github.com/kgellert/hodatay-messenger/internal/chats/handler"
 	chatsrepo "github.com/kgellert/hodatay-messenger/internal/chats/repo"
 	appConfig "github.com/kgellert/hodatay-messenger/internal/config"
+	configHandler "github.com/kgellert/hodatay-messenger/internal/config/handler"
 	"github.com/kgellert/hodatay-messenger/internal/logger"
 	"github.com/kgellert/hodatay-messenger/internal/logger/handlers/slogpretty"
 	"github.com/kgellert/hodatay-messenger/internal/logger/sl"
@@ -103,6 +104,7 @@ func main() {
 
 	uploadsService := uploadsservice.New(bucket, presigner, s3Client, uploadsRepo)
 
+	configHandler := configHandler.New(cfg.AppConfig, log)
 	chatsHandler := chatshandler.New(chatsRepo, log)
 	messagesHandler := messageshandler.New(
 		messagesRepo,
@@ -131,9 +133,12 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	router.Get("/config", configHandler.GetConfig())
+
 	router.Group(func(r chi.Router) {
 		r.Use(userhandlers.WithUser)
 
+		r.Post("/chats", chatsHandler.CreateChat())
 		r.Get("/chats", chatsHandler.GetChats())
 		r.Get("/chats/{chatId}", chatsHandler.GetChat())
 
@@ -148,10 +153,10 @@ func main() {
 		r.Post("/uploads/confirm", uploadsHandler.ConfirmUpload())
 	})
 
-	log.Info("starting server", slog.String("address", cfg.Address))
+	log.Info("starting server", slog.String("address", cfg.HTTPServer.Address))
 
 	srv := &http.Server{
-		Addr:         cfg.Address,
+		Addr:         cfg.HTTPServer.Address,
 		Handler:      router,
 		ReadTimeout:  cfg.HTTPServer.Timeout,
 		WriteTimeout: cfg.HTTPServer.Timeout,

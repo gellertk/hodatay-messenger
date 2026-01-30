@@ -42,7 +42,7 @@ CREATE INDEX idx_messages_reply_to ON messages(reply_to_message_id) WHERE reply_
 CREATE TABLE attachments (
   id BIGSERIAL PRIMARY KEY,
   message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-  key TEXT NOT NULL,
+  file_id TEXT NOT NULL,
   content_type TEXT NOT NULL,
   filename TEXT NOT NULL,
   size BIGINT NOT NULL,
@@ -58,8 +58,8 @@ CHECK (
   OR (width > 0 AND height > 0)
 );
 
-DROP INDEX IF EXISTS idx_attachments_key;
-CREATE INDEX idx_attachments_key ON attachments(key);
+DROP INDEX IF EXISTS idx_attachments_file_id;
+CREATE INDEX idx_attachments_file_id ON attachments(file_id);
 CREATE INDEX idx_attachments_message_id_id ON attachments(message_id, id);
 
 -- Uploads

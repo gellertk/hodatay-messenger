@@ -10,7 +10,7 @@ import (
 // Temporary in-memory storage until we have proper user table in DB
 var users = map[int64]string{
 	1: "Роман Потапов",
-	2: "`ООО` Астра Про",
+	2: "Иван Иванов",
 }
 
 type Repo struct {

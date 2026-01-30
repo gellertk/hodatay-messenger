@@ -41,9 +41,7 @@ func (h *Handler) GetChats() http.HandlerFunc {
 
 		if err != nil { // обработать конкретные ошибки
 			log.Error("Failed to get chats", sl.Err(err)) // Добавить кастомную обработку ошибки
-
 			render.JSON(w, r, response.Error("failed to get chats"))
-
 			return
 		}
 
@@ -52,6 +50,36 @@ func (h *Handler) GetChats() http.HandlerFunc {
 		render.JSON(w, r, chatsdomain.GetChatsResponse{
 			Response: response.OK(),
 			Chats:    chats,
+		})
+	}
+}
+
+func (h *Handler) CreateChat() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const op = "handlers.chats.create.chat"
+
+		log := h.log.With(
+			slog.String("op", op),
+			slog.String("request_id", middleware.GetReqID(r.Context())),
+		)
+
+		var req chatsdomain.CreateChatRequest
+		if err := render.DecodeJSON(r.Body, &req); err != nil {
+			render.JSON(w, r, response.Error("invalid body"))
+			return
+		}
+
+		chatInfo, err := h.service.CreateChat(r.Context(), req.UserIDs)
+		if err != nil {
+			log.Error("failed to get chat", sl.Err(err))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, response.Error("failed to get chat"))
+			return
+		}
+
+		render.JSON(w, r, chatsdomain.GetChatResponse{
+			Response: response.OK(),
+			Chat:     &chatInfo,
 		})
 	}
 }

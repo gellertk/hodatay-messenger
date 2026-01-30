@@ -26,66 +26,85 @@ func New(db *sqlx.DB, usersRepo userdomain.Repo) *Repo {
 	return &Repo{db: db, usersRepo: usersRepo}
 }
 
-func (s *Repo) AddChat(ctx context.Context, matterID int64) (int64, error) {
-	const op = "storage.postgres.AddChat"
+func (s *Repo) CreateChat(ctx context.Context, userIDs []int64) (chatsdomain.ChatInfo, error) {
+	const op = "storage.postgres.CreateChat"
 
-	var id int64
-	err := s.db.QueryRowContext(
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return chatsdomain.ChatInfo{}, fmt.Errorf("%s: begin tx: %w", op, err)
+	}
+	defer tx.Rollback()
+
+	var chatID int64
+	err = tx.QueryRowxContext(
 		ctx,
-		`INSERT INTO chats (matter_id) VALUES ($1) RETURNING id`,
-		matterID,
-	).Scan(&id)
+		`INSERT INTO chats (matter_id) VALUES ($1)
+		RETURNING id`,
+		1,
+	).Scan(&chatID)
 
 	if err != nil {
-		return 0, fmt.Errorf("%s: insert chat: %w", op, err)
+		return chatsdomain.ChatInfo{}, fmt.Errorf("%s: insert chat: %w", op, err)
 	}
 
-	return id, nil
+	users, err := s.addChatParticipants(ctx, tx, chatID, userIDs)
+	if err != nil {
+		return chatsdomain.ChatInfo{}, fmt.Errorf("%s: add participants: %w", op, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return chatsdomain.ChatInfo{}, fmt.Errorf("%s: commit tx: %w", op, err)
+	}
+
+	chatInfo := chatsdomain.ChatInfo{
+		ID:    chatID,
+		Users: users,
+	}
+
+	return chatInfo, nil
 }
 
-func (s *Repo) AddChatParticipants(ctx context.Context, chatID int64, userIDs []int64) error {
+func (s *Repo) AddChatParticipants(ctx context.Context, chatID int64, userIDs []int64) ([]userdomain.User, error) {
+	return s.addChatParticipants(ctx, s.db, chatID, userIDs)
+}
+
+func (s *Repo) addChatParticipants(
+	ctx context.Context,
+	q sqlx.ExtContext,
+	chatID int64,
+	userIDs []int64,
+) ([]userdomain.User, error) {
+
 	const op = "storage.postgres.AddChatParticipants"
 
 	if len(userIDs) == 0 {
-		return ErrEmptyParticipants
+		return nil, ErrEmptyParticipants
 	}
 
-	uniquedUserIDs := uniquePositiveInts(userIDs)
+	userIDs = uniquePositiveInts(userIDs)
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	query := `
+			INSERT INTO chat_participants (chat_id, user_id)
+			VALUES ($1, $2)
+			ON CONFLICT (chat_id, user_id) DO NOTHING
+    `
 
-	if err != nil {
-		return fmt.Errorf("%s: failed to create transaction: %w", op, err)
-	}
+	users := make([]userdomain.User, 0, len(userIDs))
 
-	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(
-		ctx,
-		`INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2)`,
-	)
-
-	if err != nil {
-		return fmt.Errorf("%s: failed to prepare context: %w", op, err)
-	}
-
-	defer stmt.Close()
-
-	for _, userID := range uniquedUserIDs {
-		_, err := stmt.ExecContext(ctx, chatID, userID)
-
-		if err != nil {
-			return fmt.Errorf("%s: failed to exec context for userID: %d : %w", op, userID, err)
+	for _, userID := range userIDs {
+		if _, err := q.ExecContext(ctx, query, chatID, userID); err != nil {
+			return nil, fmt.Errorf("%s: insert user %d: %w", op, userID, err)
 		}
+
+		u, err := s.usersRepo.GetUser(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("%s: get user %d: %w", op, userID, err)
+		}
+
+		users = append(users, u)
 	}
 
-	err = tx.Commit()
-
-	if err != nil {
-		return fmt.Errorf("%s: failed commit: %w", op, err)
-	}
-
-	return nil
+	return users, nil
 }
 
 func uniquePositiveInts(input []int64) []int64 {
@@ -175,16 +194,16 @@ func (s *Repo) GetChats(ctx context.Context, userID int64) ([]chatsdomain.ChatLi
 			)
 
 		SELECT
-			cp.chat_id                                   AS "chat_id",
-			cp.user_id                                   AS "user_id",
+			cp.chat_id                                          AS "chat_id",
+			cp.user_id                                          AS "user_id",
 
-			lm.id                                        AS "last_message.id",
-			lm.sender_user_id                            AS "last_message.sender_user_id",
-			COALESCE(lm.text, '')                        AS "last_message.text",
-			lm.created_at                                AS "last_message.created_at",
+			COALESCE(lm.id, 0)                                  AS "last_message.id",
+			COALESCE(lm.sender_user_id, 0)                      AS "last_message.sender_user_id",
+			COALESCE(lm.text, '')                               AS "last_message.text",
+			COALESCE(lm.created_at, '1970-01-01'::timestamptz)  AS "last_message.created_at",
 
-			COALESCE(uc.unread_count, 0)                 AS "unread_count",
-			COALESCE(om.others_max_last_read_message_id, 0) AS "others_max_last_read_message_id"
+			COALESCE(uc.unread_count, 0)                        AS "unread_count",
+			COALESCE(om.others_max_last_read_message_id, 0)     AS "others_max_last_read_message_id"
 
 		FROM chat_participants cp
 		JOIN my_participation mp ON mp.chat_id = cp.chat_id
@@ -206,8 +225,9 @@ func (s *Repo) GetChats(ctx context.Context, userID int64) ([]chatsdomain.ChatLi
 	}
 	defer rows.Close()
 
+	chats := []chatsdomain.ChatListItem{}
+
 	var (
-		chats                      []chatsdomain.ChatListItem
 		currentUsers               []userdomain.User
 		lastChatID                 int64
 		lastMessage                messagesdomain.Message
@@ -273,48 +293,48 @@ func (s *Repo) GetChats(ctx context.Context, userID int64) ([]chatsdomain.ChatLi
 	return chats, nil
 }
 
-func (s *Repo) GetChat(ctx context.Context, chatID int64) (chatsdomain.ChatInfo, error) {
+func (s *Repo) GetChat(ctx context.Context, chatID int64) (*chatsdomain.ChatInfo, error) {
 	const op = "storage.postgres.GetChat"
 
-	chatRows, err := s.db.QueryxContext(
+	rows, err := s.db.QueryContext(
 		ctx,
-		`
-		SELECT
-			cp.chat_id,
-			cp.user_id,
-		FROM
-			chat_participants
-		WHERE
-			chat_id = $1
-			`,
+		`SELECT chat_id, user_id
+		FROM chat_participants
+		WHERE chat_id = $1`,
 		chatID,
 	)
-
 	if err != nil {
-		return chatsdomain.ChatInfo{}, fmt.Errorf("%s: get chatRows error: %w", op, err)
+		return nil, fmt.Errorf("%s: query error: %w", op, err)
 	}
+	defer rows.Close()
 
-	defer chatRows.Close()
+	var userIDs []int64
+	var foundChatID int64
 
-	var users []userdomain.User
-
-	for chatRows.Next() {
-		var chatRow chatsdomain.ChatsRow
-		if err := chatRows.StructScan(&chatRow); err != nil {
-			return chatsdomain.ChatInfo{}, err
+	for rows.Next() {
+		var cID, uID int64
+		if err := rows.Scan(&cID, &uID); err != nil {
+			return nil, fmt.Errorf("%s: scan error: %w", op, err)
 		}
-		user, err := s.usersRepo.GetUser(ctx, chatRow.UserID)
-		if err != nil {
-			return chatsdomain.ChatInfo{}, fmt.Errorf("%s: get user: %w", op, err)
-		}
-		users = append(users, user)
+		foundChatID = cID
+		userIDs = append(userIDs, uID)
 	}
 
-	if err := chatRows.Err(); err != nil {
-		return chatsdomain.ChatInfo{}, fmt.Errorf("%s: rows error: %w", op, err)
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: rows error: %w", op, err)
 	}
 
-	chat := chatsdomain.ChatInfo{ID: chatID, Users: users}
+	if len(userIDs) == 0 {
+		return nil, fmt.Errorf("%s: chat not found", op)
+	}
 
-	return chat, nil
+	users, err := s.usersRepo.GetUsers(ctx, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("%s: get users error: %w", op, err)
+	}
+
+	return &chatsdomain.ChatInfo{
+		ID:    foundChatID,
+		Users: users,
+	}, nil
 }

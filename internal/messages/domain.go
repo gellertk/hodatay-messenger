@@ -45,7 +45,7 @@ type CreateMessageResponse struct {
 
 type Response struct {
 	response.Response
-	Messages []Message `json:"messages,omitempty"`
+	Messages []Message `json:"messages"`
 }
 
 type AttachmentRow struct {
