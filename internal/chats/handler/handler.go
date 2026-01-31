@@ -79,7 +79,37 @@ func (h *Handler) CreateChat() http.HandlerFunc {
 
 		render.JSON(w, r, chatsdomain.GetChatResponse{
 			Response: response.OK(),
-			Chat:     &chatInfo,
+			Chat:     chatInfo,
+		})
+	}
+}
+
+func (h *Handler) DeleteChats() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const op = "handlers.chats.delete.chat"
+
+		log := h.log.With(
+			slog.String("op", op),
+			slog.String("request_id", middleware.GetReqID(r.Context())),
+		)
+
+		var req chatsdomain.DeleteChatRequest
+		if err := render.DecodeJSON(r.Body, &req); err != nil {
+			render.JSON(w, r, response.Error("invalid body"))
+			return
+		}
+
+		chatIDs, err := h.service.DeleteChats(r.Context(), req.ChatIDs)
+		if err != nil {
+			log.Error("failed to delete chat", sl.Err(err))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, response.Error("failed to delete chat"))
+			return
+		}
+
+		render.JSON(w, r, chatsdomain.DeleteChatsResponse{
+			Response: response.OK(),
+			ChatIDs:  chatIDs,
 		})
 	}
 }
@@ -113,6 +143,32 @@ func (h *Handler) GetChat() http.HandlerFunc {
 		render.JSON(w, r, chatsdomain.GetChatResponse{
 			Response: response.OK(),
 			Chat:     chatInfo,
+		})
+	}
+}
+
+func (h *Handler) GetUnreadMessagesCount() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const op = "handlers.messages.GetUnreadMessagesCount"
+
+		log := h.log.With(
+			slog.String("op", op),
+			slog.String("request_id", middleware.GetReqID(r.Context())),
+		)
+
+		userID := userhandlers.UserID(r)
+
+		unreadCount, err := h.service.GetUnreadMessagesCount(r.Context(), userID)
+
+		if err != nil {
+			log.Warn("failed to get unread messages count", sl.Err(err))
+			render.JSON(w, r, response.Error("failed to get unread messages count"))
+			return
+		}
+
+		render.JSON(w, r, chatsdomain.GetUnreadMessagesCountResponse{
+			Response: response.OK(),
+			UnreadCount: unreadCount,
 		})
 	}
 }

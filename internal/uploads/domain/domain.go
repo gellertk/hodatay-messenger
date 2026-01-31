@@ -2,6 +2,7 @@ package uploadsdomain
 
 import (
 	"context"
+	"database/sql"
 
 	response "github.com/kgellert/hodatay-messenger/internal/lib"
 )
@@ -13,6 +14,37 @@ const (
 	StatusReady     UploadStatus = "ready"
 	StatusFailed    UploadStatus = "failed"
 )
+
+func NewAttachmentFromRow(row AttachmentRow) Attachment {
+	var width, height *int
+	if row.Width.Valid {
+		w := int(row.Width.Int32)
+		width = &w
+	}
+	if row.Height.Valid {
+		h := int(row.Height.Int32)
+		height = &h
+	}
+
+	return Attachment{
+		FileID:      row.FileID.String,
+		ContentType: row.ContentType.String,
+		Filename:    row.Filename.String,
+		Size:        row.Size.Int64,
+		Width:       width,
+		Height:      height,
+	}
+}
+
+type AttachmentRow struct {
+	ID          sql.NullInt64  `db:"id"`
+	FileID      sql.NullString `db:"file_id"`
+	ContentType sql.NullString `db:"content_type"`
+	Filename    sql.NullString `db:"filename"`
+	Size        sql.NullInt64  `db:"size"`
+	Width       sql.NullInt32  `db:"width"`
+	Height      sql.NullInt32  `db:"height"`
+}
 
 type Attachment struct {
 	FileID      string `json:"file_id" db:"file_id"`

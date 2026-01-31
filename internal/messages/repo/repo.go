@@ -24,13 +24,13 @@ func (s *Repo) SendMessage(
 	text string,
 	attachments []messagesdomain.CreateMessageAttachment,
 	replyToMessageID *int64,
-) (messagesdomain.Message, error) {
+) (*messagesdomain.Message, error) {
 
 	const op = "storage.postgres.SendMessage"
 
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return messagesdomain.Message{}, fmt.Errorf("%s: begin tx: %w", op, err)
+		return nil, fmt.Errorf("%s: begin tx: %w", op, err)
 	}
 	defer tx.Rollback()
 
@@ -53,13 +53,13 @@ func (s *Repo) SendMessage(
 			rm.text AS "reply_to.text",
 			rm.created_at AS "reply_to.created_at",
 
-			ra.id AS "reply_to.attachments.id",
-			ra.file_id AS "reply_to.attachments.file_id",
-			ra.content_type AS "reply_to.attachments.content_type",
-			ra.filename AS "reply_to.attachments.filename",
-			ra.size AS "reply_to.attachments.size",
-			ra.width AS "reply_to.attachments.width",
-			ra.height AS "reply_to.attachments.height"
+			ra.id AS "reply_to.attachment.id",
+			ra.file_id AS "reply_to.attachment.file_id",
+			ra.content_type AS "reply_to.attachment.content_type",
+			ra.filename AS "reply_to.attachment.filename",
+			ra.size AS "reply_to.attachment.size",
+			ra.width AS "reply_to.attachment.width",
+			ra.height AS "reply_to.attachment.height"
 
 		FROM inserted i
 		LEFT JOIN messages rm ON i.reply_to_message_id = rm.id
@@ -68,24 +68,24 @@ func (s *Repo) SendMessage(
 		chatID, userID, text, replyToMessageID,
 	)
 	if err != nil {
-		return messagesdomain.Message{}, fmt.Errorf("%s: query message: %w", op, err)
+		return nil, fmt.Errorf("%s: query message: %w", op, err)
 	}
 	defer rows.Close()
 
-	var resultRows []messagesdomain.MsgRow
+	var resultRows []messagesdomain.MessageRow
 	for rows.Next() {
-		var r messagesdomain.MsgRow
+		var r messagesdomain.MessageRow
 		if err := rows.StructScan(&r); err != nil {
-			return messagesdomain.Message{}, fmt.Errorf("%s: scan: %w", op, err)
+			return nil, fmt.Errorf("%s: scan: %w", op, err)
 		}
 		resultRows = append(resultRows, r)
 	}
 	if err := rows.Err(); err != nil {
-		return messagesdomain.Message{}, fmt.Errorf("%s: rows error: %w", op, err)
+		return nil, fmt.Errorf("%s: rows error: %w", op, err)
 	}
 
 	if len(resultRows) == 0 {
-		return messagesdomain.Message{}, fmt.Errorf("%s: no rows returned", op)
+		return nil, fmt.Errorf("%s: no rows returned", op)
 	}
 
 	firstRow := resultRows[0]
@@ -150,13 +150,13 @@ func (s *Repo) SendMessage(
 		)
 
 		if err != nil {
-			return messagesdomain.Message{}, fmt.Errorf("%s: select upload: %w", op, err)
+			return nil, fmt.Errorf("%s: select upload: %w", op, err)
 		}
 
 		if upload.Status != string(uploadsdomain.StatusReady) {
-			return messagesdomain.Message{}, fmt.Errorf("%s: upload is not confirmed: %w", op, err)
+			return nil, fmt.Errorf("%s: upload is not confirmed: %w", op, err)
 		}
-		
+
 		var attachment uploadsdomain.Attachment
 
 		err = tx.QueryRowxContext(
@@ -176,19 +176,19 @@ func (s *Repo) SendMessage(
 		)
 
 		if err != nil {
-			return messagesdomain.Message{}, fmt.Errorf("%s: insert attachment: %w", op, err)
+			return nil, fmt.Errorf("%s: insert attachment: %w", op, err)
 		}
 
 		atts = append(atts, attachment)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return messagesdomain.Message{}, fmt.Errorf("%s: commit tx: %w", op, err)
+		return nil, fmt.Errorf("%s: commit tx: %w", op, err)
 	}
 
 	msg.Attachments = atts
 
-	return msg, nil
+	return &msg, nil
 }
 
 func (s *Repo) SetLastReadMessage(ctx context.Context, chatID, userID, lastReadMessageID int64) (int64, error) {
@@ -204,18 +204,12 @@ func (s *Repo) SetLastReadMessage(ctx context.Context, chatID, userID, lastReadM
 	if err := tx.GetContext(ctx, &maxID, `
 		SELECT COALESCE(MAX(id), 0)
 		FROM messages
-		WHERE chat_id = $1
-	`, chatID); err != nil {
+		WHERE chat_id = $1 AND sender_user_id != $2
+	`, chatID, userID); err != nil {
 		return 0, fmt.Errorf("%s: select max: %w", op, err)
 	}
 
-	saved := lastReadMessageID
-	if saved > maxID {
-		saved = maxID
-	}
-	if saved < 0 {
-		saved = 0
-	}
+	saved := max(min(lastReadMessageID, maxID), 0)
 
 	res, err := tx.ExecContext(ctx, `
 	UPDATE chat_participants
@@ -261,21 +255,21 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 			rm.text AS "reply_to.text",
 			rm.created_at AS "reply_to.created_at",
 
-			a.id AS "attachments.id",
-			a.file_id AS "attachments.file_id",
-			a.content_type AS "attachments.content_type",
-			a.filename AS "attachments.filename",
-			a.size AS "attachments.size",
-			a.width AS "attachments.width",
-			a.height AS "attachments.height",
+			a.id AS "attachment.id",
+			a.file_id AS "attachment.file_id",
+			a.content_type AS "attachment.content_type",
+			a.filename AS "attachment.filename",
+			a.size AS "attachment.size",
+			a.width AS "attachment.width",
+			a.height AS "attachment.height",
 
-			ra.id AS "reply_to.attachments.id",
-			ra.file_id AS "reply_to.attachments.file_id",
-			ra.content_type AS "reply_to.attachments.content_type",
-			ra.filename AS "reply_to.attachments.filename",
-			ra.size AS "reply_to.attachments.size",
-			ra.width AS "reply_to.attachments.width",
-			ra.height AS "reply_to.attachments.height"
+			ra.id AS "reply_to.attachment.id",
+			ra.file_id AS "reply_to.attachment.file_id",
+			ra.content_type AS "reply_to.attachment.content_type",
+			ra.filename AS "reply_to.attachment.filename",
+			ra.size AS "reply_to.attachment.size",
+			ra.width AS "reply_to.attachment.width",
+			ra.height AS "reply_to.attachment.height"
 		FROM messages m
 		LEFT JOIN messages rm ON m.reply_to_message_id = rm.id
 		LEFT JOIN attachments a ON a.message_id = m.id
@@ -295,7 +289,7 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 	seenReplyAtt := map[int64]map[int64]struct{}{}
 
 	for rows.Next() {
-		var r messagesdomain.MsgRow
+		var r messagesdomain.MessageRow
 		if err := rows.StructScan(&r); err != nil {
 			return nil, err
 		}
@@ -333,9 +327,9 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 					FileID:      r.Attachment.FileID.String,
 					ContentType: r.Attachment.ContentType.String,
 					Filename:    r.Attachment.Filename.String,
-					Size: r.Attachment.Size.Int64,
-					Width: width,
-					Height: height,
+					Size:        r.Attachment.Size.Int64,
+					Width:       width,
+					Height:      height,
 				})
 			}
 		}

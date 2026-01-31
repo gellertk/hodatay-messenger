@@ -10,9 +10,40 @@ import (
 )
 
 type Repo interface {
-	SendMessage(ctx context.Context, chatID, userID int64, text string, attachments []CreateMessageAttachment, replyToMessageID *int64) (Message, error)
+	SendMessage(ctx context.Context, chatID, userID int64, text string, attachments []CreateMessageAttachment, replyToMessageID *int64) (*Message, error)
 	GetMessages(ctx context.Context, chatID int64) ([]Message, error)
 	SetLastReadMessage(ctx context.Context, chatID, userID, lastReadMessageID int64) (int64, error)
+}
+
+func NewMessageFromRow(row MessageRow, attachments []uploadsdomain.AttachmentRow, replyAttachments []uploadsdomain.AttachmentRow) Message {
+	atts := []uploadsdomain.Attachment{}
+	for _, att := range attachments {
+		uAtt := uploadsdomain.NewAttachmentFromRow(att)
+		atts = append(atts, uAtt)
+	}
+
+	rAtts := []uploadsdomain.Attachment{}
+for _, att := range replyAttachments {
+		uAtt := uploadsdomain.NewAttachmentFromRow(att)
+		rAtts = append(rAtts, uAtt)
+	}
+
+	rm := Message{
+		ID: row.ReplyTo.ID.Int64,
+		SenderUserID: row.ReplyTo.SenderUserID.Int64,
+		Text: row.ReplyTo.Text.String,
+		CreatedAt: row.ReplyTo.CreatedAt.Time,
+		Attachments: rAtts,
+	}
+
+	return Message{
+		ID: row.ID,
+		SenderUserID: row.SenderUserID,
+		Text: row.Text,
+		CreatedAt: row.CreatedAt,
+		Attachments: atts,
+		ReplyTo: &rm,
+	}
 }
 
 type Message struct {
@@ -43,22 +74,12 @@ type CreateMessageResponse struct {
 	Message `json:"message"`
 }
 
-type Response struct {
+type GetMessagesResponse struct {
 	response.Response
 	Messages []Message `json:"messages"`
 }
 
-type AttachmentRow struct {
-	ID          sql.NullInt64  `db:"id"`
-	FileID      sql.NullString `db:"file_id"`
-	ContentType sql.NullString `db:"content_type"`
-	Filename    sql.NullString `db:"filename"`
-	Size        sql.NullInt64  `db:"size"`
-	Width       sql.NullInt32  `db:"width"`
-	Height      sql.NullInt32  `db:"height"`
-}
-
-type MsgRow struct {
+type MessageRow struct {
 	ID           int64     `db:"id"`
 	SenderUserID int64     `db:"sender_user_id"`
 	Text         string    `db:"text"`
@@ -71,6 +92,6 @@ type MsgRow struct {
 		CreatedAt    sql.NullTime   `db:"created_at"`
 	} `db:"reply_to"`
 
-	Attachment        AttachmentRow `db:"attachments"`
-	ReplyToAttachment AttachmentRow `db:"reply_to.attachments"`
+	Attachment        uploadsdomain.AttachmentRow `db:"attachment"`
+	ReplyToAttachment uploadsdomain.AttachmentRow `db:"reply_to.attachment"`
 }

@@ -2,15 +2,18 @@ package usersrepo
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jmoiron/sqlx"
 	userdomain "github.com/kgellert/hodatay-messenger/internal/users/domain"
 )
 
+var ErrUserNotFound = errors.New("user not found")
+
 // Temporary in-memory storage until we have proper user table in DB
-var users = map[int64]string{
-	1: "Роман Потапов",
-	2: "Иван Иванов",
+var users = []userdomain.User{
+	{ID: 1, Name: "Роман Потапов", IsAdmin: true},
+	{ID: 2, Name: "Иван Иванов", IsAdmin: false},
 }
 
 type Repo struct {
@@ -22,18 +25,27 @@ func New(db *sqlx.DB) *Repo {
 }
 
 func (r *Repo) GetUser(ctx context.Context, id int64) (userdomain.User, error) {
-	// TODO: Replace with actual DB query when users table is ready
-	// For now using in-memory map
-	name := users[id]
-	return userdomain.User{ID: id, Name: name}, nil
+	for i := range users {
+		if users[i].ID == id {
+			return users[i], nil
+		}
+	}
+	return userdomain.User{}, ErrUserNotFound
 }
 
 func (r *Repo) GetUsers(ctx context.Context, ids []int64) ([]userdomain.User, error) {
-	// TODO: Replace with actual DB query when users table is ready
+	usersByID := make(map[int64]userdomain.User, len(users))
+	for _, u := range users {
+		usersByID[u.ID] = u
+	}
+
 	result := make([]userdomain.User, 0, len(ids))
 	for _, id := range ids {
-		name := users[id]
-		result = append(result, userdomain.User{ID: id, Name: name})
+		u, ok := usersByID[id]
+		if !ok {
+			return nil, ErrUserNotFound
+		}
+		result = append(result, u)
 	}
 	return result, nil
 }

@@ -105,6 +105,7 @@ func main() {
 	uploadsService := uploadsservice.New(bucket, presigner, s3Client, uploadsRepo)
 
 	configHandler := configHandler.New(cfg.AppConfig, log)
+	usersHandler := userhandlers.New(usersRepo, log)
 	chatsHandler := chatshandler.New(chatsRepo, log)
 	messagesHandler := messageshandler.New(
 		messagesRepo,
@@ -117,23 +118,9 @@ func main() {
 		log,
 	)
 
-	router.Post("/signin", func(w http.ResponseWriter, r *http.Request) {
-		raw := r.URL.Query().Get("user_id")
-		if raw == "" {
-			http.Error(w, "missing user_id", http.StatusBadRequest)
-			return
-		}
-
-		http.SetCookie(w, &http.Cookie{
-			Name:  "user_id",
-			Value: raw,
-			Path:  "/",
-		})
-
-		w.WriteHeader(http.StatusOK)
-	})
-
 	router.Get("/config", configHandler.GetConfig())
+
+	router.Post("/signin", usersHandler.SignInHandler())
 
 	router.Group(func(r chi.Router) {
 		r.Use(userhandlers.WithUser)
@@ -141,6 +128,8 @@ func main() {
 		r.Post("/chats", chatsHandler.CreateChat())
 		r.Get("/chats", chatsHandler.GetChats())
 		r.Get("/chats/{chatId}", chatsHandler.GetChat())
+		r.Get("/chats/unread-count", chatsHandler.GetUnreadMessagesCount())
+		r.Post("/chats/delete", chatsHandler.DeleteChats())
 
 		r.Get("/ws", ws.WSHandler(h, log))
 

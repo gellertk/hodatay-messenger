@@ -1,10 +1,20 @@
 package userdomain
 
-import "context"
+import (
+	"context"
+
+	response "github.com/kgellert/hodatay-messenger/internal/lib"
+)
 
 type User struct {
-	ID   int64  `json:"id" db:"id"`
-	Name string `json:"name" db:"name"`
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	IsAdmin bool   `json:"is_admin"`
+}
+
+type SignInResponse struct {
+	response.Response
+	User User `json:"user"`
 }
 
 type Repo interface {

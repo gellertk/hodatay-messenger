@@ -59,7 +59,7 @@ func (h *Handler) GetMessages() http.HandlerFunc {
 			return
 		}
 
-		render.JSON(w, r, messagesdomain.Response{
+		render.JSON(w, r, messagesdomain.GetMessagesResponse{
 			Response: response.OK(),
 			Messages: msgs,
 		})
@@ -112,10 +112,10 @@ func (h *Handler) SendMessage() http.HandlerFunc {
 
 		render.JSON(w, r, messagesdomain.CreateMessageResponse{
 			Response: response.OK(),
-			Message:  msg,
+			Message:  *msg,
 		})
 
-		evt, err := ws.NewEvent(chatID, ws.MessageNew, ws.MessageNewPayload{Message: msg})
+		evt, err := ws.NewEvent(chatID, ws.MessageNew, ws.MessageNewPayload{Message: *msg})
 		if err != nil {
 			log.Error("failed to build ws event", sl.Err(err))
 			return
