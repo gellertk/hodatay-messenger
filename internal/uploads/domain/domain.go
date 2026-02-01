@@ -3,6 +3,7 @@ package uploadsdomain
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	response "github.com/kgellert/hodatay-messenger/internal/lib"
 )
@@ -16,14 +17,17 @@ const (
 )
 
 func NewAttachmentFromRow(row AttachmentRow) Attachment {
-	var width, height *int
-	if row.Width.Valid {
-		w := int(row.Width.Int32)
-		width = &w
+	var imageInfo *ImageInfo
+	if row.Width.Valid && row.Height.Valid {
+		imageInfo = &ImageInfo{
+			Width:  int(row.Width.Int32),
+			Height: int(row.Height.Int32),
+		}
 	}
-	if row.Height.Valid {
-		h := int(row.Height.Int32)
-		height = &h
+
+	var audioInfo *AudioInfo
+	if row.Duration.Valid {
+		audioInfo = &AudioInfo{row.Duration.Int64}
 	}
 
 	return Attachment{
@@ -31,9 +35,19 @@ func NewAttachmentFromRow(row AttachmentRow) Attachment {
 		ContentType: row.ContentType.String,
 		Filename:    row.Filename.String,
 		Size:        row.Size.Int64,
-		Width:       width,
-		Height:      height,
+		ImageInfo:   imageInfo,
+		AudioInfo:   audioInfo,
 	}
+}
+
+type UploadRow struct {
+	Size        int64  `db:"size"`
+	Width       *int   `db:"width"`
+	Height      *int   `db:"height"`
+	Duration    *int64 `db:"duration"`
+	ContentType string `db:"content_type"`
+	Filename    string `db:"original_filename"`
+	Status      string `db:"status"`
 }
 
 type AttachmentRow struct {
@@ -42,28 +56,54 @@ type AttachmentRow struct {
 	ContentType sql.NullString `db:"content_type"`
 	Filename    sql.NullString `db:"filename"`
 	Size        sql.NullInt64  `db:"size"`
+	Duration    sql.NullInt64  `db:"duration"`
 	Width       sql.NullInt32  `db:"width"`
 	Height      sql.NullInt32  `db:"height"`
 }
 
 type Attachment struct {
-	FileID      string `json:"file_id" db:"file_id"`
-	ContentType string `json:"content_type" db:"content_type"`
-	Filename    string `json:"filename" db:"filename"`
-	Size        int64  `json:"size" db:"size"`
-	Width       *int   `json:"width" db:"width"`
-	Height      *int   `json:"height" db:"height"`
+	FileID      string     `json:"file_id"`
+	ContentType string     `json:"content_type"`
+	Filename    string     `json:"filename"`
+	Size        int64      `json:"size"`
+	ImageInfo   *ImageInfo `json:"image_info"`
+	AudioInfo   *AudioInfo `json:"audio_info"`
+}
+
+type ImageInfo struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type AudioInfo struct {
+	Duration int64 `json:"duration"`
+	// Waveform string   `json:"waveform"`
 }
 
 type Repo interface {
 	CreateUpload(ctx context.Context, fileID string, userID int64, contentType string, filename *string) error
-	ConfirmUpload(ctx context.Context, userID int64, fileID string, contentType string, size int64, width, height *int) error
+	ConfirmUpload(
+		ctx context.Context,
+		userID int64,
+		fileID string,
+		contentType string,
+		size int64,
+		width, height *int,
+		duration *int64,
+	) error
 }
 
 type Service interface {
-	PresignUpload(ctx context.Context, userID int64, contentType string, filename *string) (fileID, url string, err error)
+	PresignUpload(ctx context.Context, userID int64, contentType string, filename *string) (*PresignUploadInfo, error)
 	PresignDownload(ctx context.Context, fileID string) (url string, err error)
 	ConfirmUpload(ctx context.Context, userID int64, fileID string) error
+	GetPresignTTL(contentType string) time.Duration
+}
+
+type PresignUploadInfo struct {
+	FileID    string
+	URL       string
+	ExpiresIn int
 }
 
 type PresignUploadRequest struct {
@@ -78,6 +118,7 @@ type ConfirmUploadRequest struct {
 type PresignUploadResponse struct {
 	FileID    string `json:"file_id"`
 	UploadURL string `json:"upload_url"`
+	ExpiresIn int    `json:"expires_in"`
 }
 
 type PresignDownloadRequest struct {
@@ -85,7 +126,8 @@ type PresignDownloadRequest struct {
 }
 
 type PresignDownloadResponse struct {
-	URL string `json:"url"`
+	URL       string `json:"url"`
+	ExpiresIn int    `json:"expires_in"`
 }
 
 type PresignUploadHTTPResponse struct {

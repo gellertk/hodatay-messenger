@@ -21,11 +21,9 @@ var allowedContentTypes = map[string]string{
 
 	"application/zip": ".zip",
 
-	"audio/mpeg": ".mp3",
 	"audio/ogg":  ".ogg",
-	"audio/webm": ".webm",
-	"audio/wav":  ".wav",
-
+  "audio/opus": ".opus",
+	
 	"video/mp4":  ".mp4",
 	"video/webm": ".webm",
 }

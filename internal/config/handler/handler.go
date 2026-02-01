@@ -10,17 +10,17 @@ import (
 	response "github.com/kgellert/hodatay-messenger/internal/lib"
 )
 
-func New(config config.AppConfig, logger *slog.Logger) *Handler {
+func New(config config.Config, logger *slog.Logger) *Handler {
 	return &Handler{config, logger}
 }
 
 type appConfigResponse struct {
 	response.Response
-	Config config.AppConfig `json:"config"`
+	Config config.Config `json:"config"`
 }
 
 type Handler struct {
-	appConfig config.AppConfig
+	Config config.Config
 	log *slog.Logger
 }
 
@@ -37,7 +37,7 @@ func (h *Handler) GetConfig() http.HandlerFunc {
 
 		resp := appConfigResponse{
 			Response: response.OK(),
-			Config:   h.appConfig,
+			Config:   h.Config,
 		}
 
 		render.JSON(w, r, resp)

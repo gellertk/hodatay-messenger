@@ -23,26 +23,26 @@ func NewMessageFromRow(row MessageRow, attachments []uploadsdomain.AttachmentRow
 	}
 
 	rAtts := []uploadsdomain.Attachment{}
-for _, att := range replyAttachments {
+	for _, att := range replyAttachments {
 		uAtt := uploadsdomain.NewAttachmentFromRow(att)
 		rAtts = append(rAtts, uAtt)
 	}
 
 	rm := Message{
-		ID: row.ReplyTo.ID.Int64,
+		ID:           row.ReplyTo.ID.Int64,
 		SenderUserID: row.ReplyTo.SenderUserID.Int64,
-		Text: row.ReplyTo.Text.String,
-		CreatedAt: row.ReplyTo.CreatedAt.Time,
-		Attachments: rAtts,
+		Text:         row.ReplyTo.Text.String,
+		CreatedAt:    row.ReplyTo.CreatedAt.Time,
+		Attachments:  rAtts,
 	}
 
 	return Message{
-		ID: row.ID,
+		ID:           row.ID,
 		SenderUserID: row.SenderUserID,
-		Text: row.Text,
-		CreatedAt: row.CreatedAt,
-		Attachments: atts,
-		ReplyTo: &rm,
+		Text:         row.Text,
+		CreatedAt:    row.CreatedAt,
+		Attachments:  atts,
+		ReplyTo:      &rm,
 	}
 }
 

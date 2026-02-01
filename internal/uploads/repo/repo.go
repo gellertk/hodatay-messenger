@@ -33,17 +33,23 @@ func (r *Repo) CreateUpload(
 }
 
 func (r *Repo) ConfirmUpload(
-	ctx context.Context, userID int64, key string, contentType string, size int64, width, height *int,
+	ctx context.Context,
+	userID int64,
+	key string,
+	contentType string,
+	size int64,
+	width, height *int,
+	duration *int64,
 ) error {
 
 	result, err := r.db.ExecContext(
 		ctx,
 		`
 		UPDATE uploads
-		SET content_type = $1, size = $2, width = $3, height = $4, status = $5
-		WHERE file_id = $6 AND owner_user_id = $7
+		SET content_type = $1, size = $2, width = $3, height = $4, status = $5, duration = $6
+		WHERE file_id = $7 AND owner_user_id = $8
 		`,
-		contentType, size, width, height, uploadsdomain.StatusReady, key, userID,
+		contentType, size, width, height, uploadsdomain.StatusReady, duration, key, userID,
 	)
 
 	if err != nil {

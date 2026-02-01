@@ -102,9 +102,9 @@ func main() {
 	messagesRepo := messagesrepo.New(db)
 	uploadsRepo := uploadsrepo.New(db)
 
-	uploadsService := uploadsservice.New(bucket, presigner, s3Client, uploadsRepo)
+	uploadsService := uploadsservice.New(bucket, presigner, s3Client, uploadsRepo, cfg.Uploads.PresignTTL)
 
-	configHandler := configHandler.New(cfg.AppConfig, log)
+	configHandler := configHandler.New(*cfg, log)
 	usersHandler := userhandlers.New(usersRepo, log)
 	chatsHandler := chatshandler.New(chatsRepo, log)
 	messagesHandler := messageshandler.New(

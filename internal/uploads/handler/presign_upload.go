@@ -56,15 +56,15 @@ func (h *UploadsHandler) PresignUpload() http.HandlerFunc {
 		}
 
 		// Валидация Filename (опционально)
-		if req.Filename != nil && len(*req.Filename) > 255 {
-			w.WriteHeader(http.StatusBadRequest)
-			render.JSON(w, r, response.Error("filename too long"))
-			return
-		}
+		// if req.Filename != nil && len(*req.Filename) > 255 {
+		// 	w.WriteHeader(http.StatusBadRequest)
+		// 	render.JSON(w, r, response.Error("filename too long"))
+		// 	return
+		// }
 
 		userID := userhandlers.UserID(r)
 
-		fileID, url, err := h.service.PresignUpload(r.Context(), userID, req.ContentType, req.Filename)
+		pInfo, err := h.service.PresignUpload(r.Context(), userID, req.ContentType, req.Filename)
 		if err != nil {
 			log.Error("failed to presign upload", sl.Err(err))
 			w.WriteHeader(http.StatusInternalServerError)
@@ -75,8 +75,9 @@ func (h *UploadsHandler) PresignUpload() http.HandlerFunc {
 		render.JSON(w, r, uploadsdomain.PresignUploadHTTPResponse{
 			Response: response.OK(),
 			PresignUploadResponse: uploadsdomain.PresignUploadResponse{
-				FileID:    fileID,
-				UploadURL: url,
+				FileID:    pInfo.FileID,
+				UploadURL: pInfo.URL,
+				ExpiresIn: pInfo.ExpiresIn,
 			},
 		})
 	}

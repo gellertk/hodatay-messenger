@@ -9,22 +9,43 @@ import (
 )
 
 type Config struct {
-	Env         string     `yaml:"env" env-default:"local"`
-	DatabaseDSN string     `yaml:"database_dsn" env:"DATABASE_URL" env-required:"true"`
-	HTTPServer  HTTPServer `yaml:"http_server"`
-	AppConfig   AppConfig  `yaml:"app"`
+	Env         string         `yaml:"env" json:"-"`
+	DatabaseDSN string         `yaml:"database_dsn" env:"DATABASE_URL" env-required:"true" json:"-"`
+	HTTPServer  HTTPServer     `yaml:"http_server" json:"-"`
+	App         AppConfig      `yaml:"app" json:"app"`
+	Messages    MessagesConfig `yaml:"messages" json:"messages"`
+	Uploads     UploadsConfig  `yaml:"uploads" json:"uploads"`
 }
 
 type AppConfig struct {
-	BaseURL        string `yaml:"base_url" json:"base_url"`
-	MaxAttachments int    `yaml:"max_attachments" json:"max_attachments"`
-	MaxUploadSize  int64  `yaml:"max_upload_size" json:"max_upload_size"`
+	BaseURL string `yaml:"base_url" json:"base_url"`
+}
+
+type MessagesConfig struct {
+	MaxAttachments int `yaml:"max_attachments" json:"max_attachments"`
+}
+
+type UploadsConfig struct {
+	MaxImageSize       int64 `yaml:"max_image_size" json:"max_image_size"`
+	MaxVoiceSize       int64 `yaml:"max_voice_size" json:"max_voice_size"`
+	MaxVideoSize       int64 `yaml:"max_video_size" json:"max_video_size"`
+	MaxDocumentSize    int64 `yaml:"max_document_size" json:"max_document_size"`
+	MaxVoiceDurationMs int64 `yaml:"max_voice_duration_ms" json:"max_voice_duration_ms"`
+
+	PresignTTL PresignTTLConfig `yaml:"presign_ttl" json:"presign_ttl"`
+}
+
+type PresignTTLConfig struct {
+	VoiceSec    int `yaml:"voice_sec" json:"voice_sec"`
+	ImageSec    int `yaml:"image_sec" json:"image_sec"`
+	VideoSec    int `yaml:"video_sec" json:"video_sec"`
+	DocumentSec int `yaml:"document_sec" json:"document_sec"`
 }
 
 type HTTPServer struct {
-	Address     string        `yaml:"address" env-default:"localhost:8082"`
-	Timeout     time.Duration `yaml:"timeout" env-default:"4s"`
-	IdleTimeout time.Duration `yaml:"idle_timeout" env-default:"60s"`
+	Address     string        `yaml:"address" env-default:"localhost:8082" json:"-"`
+	Timeout     time.Duration `yaml:"timeout" env-default:"4s" json:"-"`
+	IdleTimeout time.Duration `yaml:"idle_timeout" env-default:"60s" json:"-"`
 }
 
 func MustLoad() *Config {
