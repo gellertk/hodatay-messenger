@@ -2,7 +2,9 @@ package uploadsrepo
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
@@ -39,29 +41,46 @@ func (r *Repo) ConfirmUpload(
 	contentType string,
 	size int64,
 	width, height *int,
-	duration *int64,
+	duration *time.Duration,
 ) error {
+
+	var durationMs sql.NullInt64
+	if duration != nil {
+		durationMs = sql.NullInt64{
+			Int64: duration.Milliseconds(),
+			Valid: true,
+		}
+	}
 
 	result, err := r.db.ExecContext(
 		ctx,
 		`
-		UPDATE uploads
-		SET content_type = $1, size = $2, width = $3, height = $4, status = $5, duration = $6
-		WHERE file_id = $7 AND owner_user_id = $8
-		`,
-		contentType, size, width, height, uploadsdomain.StatusReady, duration, key, userID,
+        UPDATE uploads
+        SET content_type = $1,
+            size = $2,
+            width = $3,
+            height = $4,
+            status = $5,
+            duration_ms = $6
+        WHERE file_id = $7 AND owner_user_id = $8
+        `,
+		contentType,
+		size,
+		width,
+		height,
+		uploadsdomain.StatusReady,
+		durationMs,
+		key,
+		userID,
 	)
-
 	if err != nil {
 		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
-
 	if err != nil {
 		return err
 	}
-
 	if rowsAffected == 0 {
 		return errors.New("upload not found or access denied")
 	}

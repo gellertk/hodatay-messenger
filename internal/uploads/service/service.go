@@ -88,61 +88,71 @@ func (s *service) PresignDownload(ctx context.Context, key string) (string, erro
 }
 
 func (s *service) ConfirmUpload(ctx context.Context, userID int64, key string) error {
-
-	err := validateKey(key)
-
-	if err != nil {
+	if err := validateKey(key); err != nil {
 		return err
 	}
 
-	headObjc, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
+	headObj, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
-
 	if err != nil {
 		return err
 	}
 
 	contentType := ""
-	if headObjc.ContentType != nil {
-		contentType = *headObjc.ContentType
+	if headObj.ContentType != nil {
+		contentType = *headObj.ContentType
 	}
 
 	var size int64
-	if headObjc.ContentLength != nil {
-		size = *headObjc.ContentLength
+	if headObj.ContentLength != nil {
+		size = *headObj.ContentLength
 	}
 
+	// IMAGE: width/height
 	if strings.HasPrefix(contentType, "image/") {
-		result, err := s.s3Client.GetObject(ctx, &s3.GetObjectInput{
+		obj, err := s.s3Client.GetObject(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(s.bucket),
 			Key:    aws.String(key),
-			Range:  aws.String("bytes=0-65535"),
+			Range:  aws.String("bytes=0-65535"), // достаточно для заголовков
 		})
-
 		if err != nil {
 			return err
 		}
+		defer obj.Body.Close()
 
-		defer result.Body.Close()
-
-		config, _, err := image.DecodeConfig(result.Body)
+		cfg, _, err := image.DecodeConfig(obj.Body)
 		if err != nil {
-			return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, nil)
+			// не смогли распарсить — просто подтверждаем без метаданных
+			return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, nil, nil)
 		}
 
-		return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, &config.Width, &config.Height, nil)
-	} else if strings.HasPrefix(contentType, "audio/") {
-		duration, err := media.DurationFromS3FFProbe(ctx, s.s3Client, s.bucket, key)
-		if err != nil {
-			s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, nil)
-		} else {
-			s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, (*int64)(&duration))
-		}
+		return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, &cfg.Width, &cfg.Height, nil, nil)
 	}
 
-	return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, nil)
+	// AUDIO: durationMs + waveform
+	if strings.HasPrefix(contentType, "audio/") {
+		// 1) длительность
+		durationMs, err := media.DurationFromS3FFProbe(ctx, s.s3Client, s.bucket, key)
+		if err != nil {
+			// даже если не смогли — подтверждаем файл
+			return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, nil, nil)
+		}
+
+		// 2) waveform (не критично)
+		const waveformPoints = 80 // 64/80/96/128 — на вкус
+		waveformU8, err := media.WaveformU8FromS3FFmpeg(ctx, s.s3Client, s.bucket, key, waveformPoints)
+		if err != nil {
+			// waveform не обязателен
+			return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, &durationMs, nil)
+		}
+
+		return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, &durationMs, waveformU8)
+	}
+
+	// OTHER
+	return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, nil, nil)
 }
 
 func (s *service) GetPresignTTL(contentType string) time.Duration {

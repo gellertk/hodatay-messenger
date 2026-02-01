@@ -60,7 +60,7 @@ func (s *Repo) SendMessage(
 			ra.size AS "reply_to.attachment.size",
 			ra.width AS "reply_to.attachment.width",
 			ra.height AS "reply_to.attachment.height",
-			ra.duration AS "reply_to.attachment.duration"
+			ra.duration_ms AS "reply_to.attachment.duration_ms"
 
 		FROM inserted i
 		LEFT JOIN messages rm ON i.reply_to_message_id = rm.id
@@ -117,7 +117,7 @@ func (s *Repo) SendMessage(
 			ctx,
 			&uploadRow,
 			`
-			SELECT original_filename, content_type, size, width, height, status, duration
+			SELECT original_filename, content_type, size, width, height, status, duration_ms
 			FROM uploads
 			WHERE file_id = $1 AND owner_user_id = $2
 			`,
@@ -137,9 +137,9 @@ func (s *Repo) SendMessage(
 		err = tx.GetContext(
 			ctx,
 			&attachmentRow,
-			`INSERT INTO attachments (message_id, file_id, content_type, filename, size, width, height, duration)
+			`INSERT INTO attachments (message_id, file_id, content_type, filename, size, width, height, duration_ms)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			RETURNING file_id, content_type, filename, size, width, height, duration
+			RETURNING file_id, content_type, filename, size, width, height, duration_ms
 			`,
 			msg.ID,
 			att.FileID,
@@ -148,7 +148,7 @@ func (s *Repo) SendMessage(
 			uploadRow.Size,
 			uploadRow.Width,
 			uploadRow.Height,
-			uploadRow.Duration,
+			uploadRow.DurationMs,
 		)
 
 		if err != nil {
@@ -239,6 +239,7 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 			a.size AS "attachment.size",
 			a.width AS "attachment.width",
 			a.height AS "attachment.height",
+			a.duration_ms AS "attachment.duration_ms",
 
 			ra.id AS "reply_to.attachment.id",
 			ra.file_id AS "reply_to.attachment.file_id",
@@ -246,7 +247,8 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 			ra.filename AS "reply_to.attachment.filename",
 			ra.size AS "reply_to.attachment.size",
 			ra.width AS "reply_to.attachment.width",
-			ra.height AS "reply_to.attachment.height"
+			ra.height AS "reply_to.attachment.height",
+			ra.duration_ms AS "reply_to.attachment.duration_ms"
 		FROM messages m
 		LEFT JOIN messages rm ON m.reply_to_message_id = rm.id
 		LEFT JOIN attachments a ON a.message_id = m.id
@@ -273,13 +275,8 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 
 		m := messagesByID[r.ID]
 		if m == nil {
-			m = &messagesdomain.Message{
-				ID:           r.ID,
-				SenderUserID: r.SenderUserID,
-				Text:         r.Text,
-				CreatedAt:    r.CreatedAt,
-				Attachments:  []uploadsdomain.Attachment{},
-			}
+			nm := messagesdomain.NewMessageFromRow(r, []uploadsdomain.AttachmentRow{}, []uploadsdomain.AttachmentRow{})
+			m = &nm
 			messagesByID[r.ID] = m
 			order = append(order, r.ID)
 		}
@@ -314,11 +311,8 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 				raid := r.ReplyToAttachment.ID.Int64
 				if _, ok := seenReplyAtt[r.ID][raid]; !ok {
 					seenReplyAtt[r.ID][raid] = struct{}{}
-					m.ReplyTo.Attachments = append(m.ReplyTo.Attachments, uploadsdomain.Attachment{
-						FileID:      r.ReplyToAttachment.FileID.String,
-						ContentType: r.ReplyToAttachment.ContentType.String,
-						Filename:    r.ReplyToAttachment.Filename.String,
-					})
+					att := uploadsdomain.NewAttachmentFromRow(r.ReplyToAttachment)
+					m.ReplyTo.Attachments = append(m.ReplyTo.Attachments, att)
 				}
 			}
 		}
@@ -328,7 +322,6 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 		return nil, err
 	}
 
-	// финальный slice в исходном порядке
 	out := make([]messagesdomain.Message, 0, len(order))
 	for _, id := range order {
 		out = append(out, *messagesByID[id])

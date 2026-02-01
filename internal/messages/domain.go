@@ -28,12 +28,15 @@ func NewMessageFromRow(row MessageRow, attachments []uploadsdomain.AttachmentRow
 		rAtts = append(rAtts, uAtt)
 	}
 
-	rm := Message{
-		ID:           row.ReplyTo.ID.Int64,
-		SenderUserID: row.ReplyTo.SenderUserID.Int64,
-		Text:         row.ReplyTo.Text.String,
-		CreatedAt:    row.ReplyTo.CreatedAt.Time,
-		Attachments:  rAtts,
+	var rm *Message
+	if row.ReplyTo.ID.Valid {
+		rm = &Message{
+			ID:           row.ReplyTo.ID.Int64,
+			SenderUserID: row.ReplyTo.SenderUserID.Int64,
+			Text:         row.ReplyTo.Text.String,
+			CreatedAt:    row.ReplyTo.CreatedAt.Time,
+			Attachments:  rAtts,
+		}
 	}
 
 	return Message{
@@ -42,7 +45,7 @@ func NewMessageFromRow(row MessageRow, attachments []uploadsdomain.AttachmentRow
 		Text:         row.Text,
 		CreatedAt:    row.CreatedAt,
 		Attachments:  atts,
-		ReplyTo:      &rm,
+		ReplyTo:      rm,
 	}
 }
 

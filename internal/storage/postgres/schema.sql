@@ -48,7 +48,7 @@ CREATE TABLE attachments (
   size BIGINT NOT NULL,
   width INT,
   height INT,
-  duration BIGINT,
+  duration_ms BIGINT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -74,7 +74,7 @@ CREATE TABLE uploads (
   size BIGINT,
   width INT,
   height INT,
-  duration BIGINT,
+  duration_ms BIGINT,
   status TEXT NOT NULL DEFAULT 'presigned', -- type UploadStatus
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ready_at   TIMESTAMPTZ,

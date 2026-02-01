@@ -26,8 +26,8 @@ func NewAttachmentFromRow(row AttachmentRow) Attachment {
 	}
 
 	var audioInfo *AudioInfo
-	if row.Duration.Valid {
-		audioInfo = &AudioInfo{row.Duration.Int64}
+	if row.DurationMs.Valid {
+		audioInfo = &AudioInfo{row.DurationMs.Int64}
 	}
 
 	return Attachment{
@@ -44,7 +44,7 @@ type UploadRow struct {
 	Size        int64  `db:"size"`
 	Width       *int   `db:"width"`
 	Height      *int   `db:"height"`
-	Duration    *int64 `db:"duration"`
+	DurationMs  *int64 `db:"duration_ms"`
 	ContentType string `db:"content_type"`
 	Filename    string `db:"original_filename"`
 	Status      string `db:"status"`
@@ -56,7 +56,7 @@ type AttachmentRow struct {
 	ContentType sql.NullString `db:"content_type"`
 	Filename    sql.NullString `db:"filename"`
 	Size        sql.NullInt64  `db:"size"`
-	Duration    sql.NullInt64  `db:"duration"`
+	DurationMs  sql.NullInt64  `db:"duration_ms"`
 	Width       sql.NullInt32  `db:"width"`
 	Height      sql.NullInt32  `db:"height"`
 }
@@ -76,7 +76,7 @@ type ImageInfo struct {
 }
 
 type AudioInfo struct {
-	Duration int64 `json:"duration"`
+	DurationMs int64 `json:"duration_ms"`
 	// Waveform string   `json:"waveform"`
 }
 
@@ -89,7 +89,8 @@ type Repo interface {
 		contentType string,
 		size int64,
 		width, height *int,
-		duration *int64,
+		durationMs *time.Duration,
+		
 	) error
 }
 
