@@ -42,6 +42,7 @@ func (r *Repo) ConfirmUpload(
 	size int64,
 	width, height *int,
 	duration *time.Duration,
+	waveform *[]byte,
 ) error {
 
 	var durationMs sql.NullInt64
@@ -49,6 +50,14 @@ func (r *Repo) ConfirmUpload(
 		durationMs = sql.NullInt64{
 			Int64: duration.Milliseconds(),
 			Valid: true,
+		}
+	}
+
+	var waveformStr sql.NullString
+	if waveform != nil {
+		waveformStr = sql.NullString{
+			String: string(*waveform),
+			Valid:  true,
 		}
 	}
 
@@ -61,8 +70,9 @@ func (r *Repo) ConfirmUpload(
             width = $3,
             height = $4,
             status = $5,
-            duration_ms = $6
-        WHERE file_id = $7 AND owner_user_id = $8
+            duration_ms = $6,
+						waveform_u8 = $7
+        WHERE file_id = $8 AND owner_user_id = $9
         `,
 		contentType,
 		size,
@@ -70,6 +80,7 @@ func (r *Repo) ConfirmUpload(
 		height,
 		uploadsdomain.StatusReady,
 		durationMs,
+		waveformStr,
 		key,
 		userID,
 	)

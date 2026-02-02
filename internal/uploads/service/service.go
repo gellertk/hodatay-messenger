@@ -136,7 +136,6 @@ func (s *service) ConfirmUpload(ctx context.Context, userID int64, key string) e
 		// 1) длительность
 		durationMs, err := media.DurationFromS3FFProbe(ctx, s.s3Client, s.bucket, key)
 		if err != nil {
-			// даже если не смогли — подтверждаем файл
 			return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, nil, nil)
 		}
 
@@ -145,10 +144,10 @@ func (s *service) ConfirmUpload(ctx context.Context, userID int64, key string) e
 		waveformU8, err := media.WaveformU8FromS3FFmpeg(ctx, s.s3Client, s.bucket, key, waveformPoints)
 		if err != nil {
 			// waveform не обязателен
-			return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, &durationMs, nil)
+			return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, &durationMs, &waveformU8)
 		}
 
-		return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, &durationMs, waveformU8)
+		return s.repo.ConfirmUpload(ctx, userID, key, contentType, size, nil, nil, &durationMs, &waveformU8)
 	}
 
 	// OTHER

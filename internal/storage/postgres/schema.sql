@@ -49,6 +49,7 @@ CREATE TABLE attachments (
   width INT,
   height INT,
   duration_ms BIGINT,
+  waveform_u8 TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -75,6 +76,7 @@ CREATE TABLE uploads (
   width INT,
   height INT,
   duration_ms BIGINT,
+  waveform_u8 TEXT,
   status TEXT NOT NULL DEFAULT 'presigned', -- type UploadStatus
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ready_at   TIMESTAMPTZ,

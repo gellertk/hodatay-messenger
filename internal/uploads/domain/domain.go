@@ -25,10 +25,17 @@ func NewAttachmentFromRow(row AttachmentRow) Attachment {
 		}
 	}
 
-	var audioInfo *AudioInfo
+	var durationMs int64
 	if row.DurationMs.Valid {
-		audioInfo = &AudioInfo{row.DurationMs.Int64}
+		durationMs = row.DurationMs.Int64
 	}
+
+	var wf []byte
+	if row.WaveformU8.Valid {
+		wf = []byte(row.WaveformU8.String)
+	}
+
+	audioInfo := &AudioInfo{durationMs, wf}
 
 	return Attachment{
 		FileID:      row.FileID.String,
@@ -41,13 +48,14 @@ func NewAttachmentFromRow(row AttachmentRow) Attachment {
 }
 
 type UploadRow struct {
-	Size        int64  `db:"size"`
-	Width       *int   `db:"width"`
-	Height      *int   `db:"height"`
-	DurationMs  *int64 `db:"duration_ms"`
-	ContentType string `db:"content_type"`
-	Filename    string `db:"original_filename"`
-	Status      string `db:"status"`
+	Size        int64   `db:"size"`
+	Width       *int    `db:"width"`
+	Height      *int    `db:"height"`
+	DurationMs  *int64  `db:"duration_ms"`
+	WaveformU8  *[]byte `db:"waveform_w8"`
+	ContentType string  `db:"content_type"`
+	Filename    string  `db:"original_filename"`
+	Status      string  `db:"status"`
 }
 
 type AttachmentRow struct {
@@ -57,6 +65,7 @@ type AttachmentRow struct {
 	Filename    sql.NullString `db:"filename"`
 	Size        sql.NullInt64  `db:"size"`
 	DurationMs  sql.NullInt64  `db:"duration_ms"`
+	WaveformU8  sql.NullString `db:"waveform_w8"`
 	Width       sql.NullInt32  `db:"width"`
 	Height      sql.NullInt32  `db:"height"`
 }
@@ -76,8 +85,8 @@ type ImageInfo struct {
 }
 
 type AudioInfo struct {
-	DurationMs int64 `json:"duration_ms"`
-	// Waveform string   `json:"waveform"`
+	DurationMs int64  `json:"duration_ms"`
+	WaveformU8 []byte `json:"waveformU8"`
 }
 
 type Repo interface {
@@ -90,7 +99,7 @@ type Repo interface {
 		size int64,
 		width, height *int,
 		durationMs *time.Duration,
-		
+		waveformU8 *[]byte,
 	) error
 }
 

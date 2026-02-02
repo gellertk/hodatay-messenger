@@ -43,7 +43,7 @@ const (
 )
 
 func main() {
-	if err := godotenv.Load("infra/.env"); err != nil {
+	if err := godotenv.Overload("infra/.env"); err != nil {
 		stdlog.Println("No .env file found, skipping...")
 	}
 

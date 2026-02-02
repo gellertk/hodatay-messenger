@@ -117,7 +117,7 @@ func (s *Repo) SendMessage(
 			ctx,
 			&uploadRow,
 			`
-			SELECT original_filename, content_type, size, width, height, status, duration_ms
+			SELECT original_filename, content_type, size, width, height, status, duration_ms, waveform_u8
 			FROM uploads
 			WHERE file_id = $1 AND owner_user_id = $2
 			`,
@@ -137,9 +137,9 @@ func (s *Repo) SendMessage(
 		err = tx.GetContext(
 			ctx,
 			&attachmentRow,
-			`INSERT INTO attachments (message_id, file_id, content_type, filename, size, width, height, duration_ms)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			RETURNING file_id, content_type, filename, size, width, height, duration_ms
+			`INSERT INTO attachments (message_id, file_id, content_type, filename, size, width, height, duration_ms, waveform_u8)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			RETURNING file_id, content_type, filename, size, width, height, duration_ms, waveform_u8
 			`,
 			msg.ID,
 			att.FileID,
@@ -149,6 +149,7 @@ func (s *Repo) SendMessage(
 			uploadRow.Width,
 			uploadRow.Height,
 			uploadRow.DurationMs,
+			uploadRow.WaveformU8,
 		)
 
 		if err != nil {
@@ -240,6 +241,7 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 			a.width AS "attachment.width",
 			a.height AS "attachment.height",
 			a.duration_ms AS "attachment.duration_ms",
+			a.waveform_u8 AS "attachment.waveform_u8",
 
 			ra.id AS "reply_to.attachment.id",
 			ra.file_id AS "reply_to.attachment.file_id",
@@ -248,7 +250,7 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 			ra.size AS "reply_to.attachment.size",
 			ra.width AS "reply_to.attachment.width",
 			ra.height AS "reply_to.attachment.height",
-			ra.duration_ms AS "reply_to.attachment.duration_ms"
+			ra.waveform_u8 AS "reply_to.attachment.waveform_u8"
 		FROM messages m
 		LEFT JOIN messages rm ON m.reply_to_message_id = rm.id
 		LEFT JOIN attachments a ON a.message_id = m.id
