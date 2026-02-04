@@ -49,6 +49,21 @@ func NewMessageFromRow(row MessageRow, attachments []uploadsdomain.AttachmentRow
 	}
 }
 
+func NewMessageFromChatRow(row ChatLastMessageRow) *MessageRow {
+	if !row.ID.Valid {
+		return nil
+	}
+	return &MessageRow{
+		row.ID.Int64,
+		row.SenderUserID.Int64,
+		row.Text.String,
+		row.CreatedAt.Time,
+		row.ReplyTo,
+		row.Attachment,
+		row.ReplyToAttachment,
+	}
+}
+
 type Message struct {
 	ID           int64                      `json:"id" db:"id"`
 	SenderUserID int64                      `json:"user_id" db:"sender_user_id"`
@@ -82,18 +97,32 @@ type GetMessagesResponse struct {
 	Messages []Message `json:"messages"`
 }
 
+type MessageRowNullable struct {
+	ID           sql.NullInt64  `db:"id"`
+	SenderUserID sql.NullInt64  `db:"sender_user_id"`
+	Text         sql.NullString `db:"text"`
+	CreatedAt    sql.NullTime   `db:"created_at"`
+}
+
+type ChatLastMessageRow struct {
+	ID           sql.NullInt64  `db:"id"`
+	SenderUserID sql.NullInt64  `db:"sender_user_id"`
+	Text         sql.NullString `db:"text"`
+	CreatedAt    sql.NullTime   `db:"created_at"`
+
+	ReplyTo MessageRowNullable `db:"reply_to"`
+
+	Attachment        uploadsdomain.AttachmentRow `db:"attachment"`
+	ReplyToAttachment uploadsdomain.AttachmentRow `db:"reply_to.attachment"`
+}
+
 type MessageRow struct {
 	ID           int64     `db:"id"`
 	SenderUserID int64     `db:"sender_user_id"`
 	Text         string    `db:"text"`
 	CreatedAt    time.Time `db:"created_at"`
 
-	ReplyTo struct {
-		ID           sql.NullInt64  `db:"id"`
-		SenderUserID sql.NullInt64  `db:"sender_user_id"`
-		Text         sql.NullString `db:"text"`
-		CreatedAt    sql.NullTime   `db:"created_at"`
-	} `db:"reply_to"`
+	ReplyTo MessageRowNullable `db:"reply_to"`
 
 	Attachment        uploadsdomain.AttachmentRow `db:"attachment"`
 	ReplyToAttachment uploadsdomain.AttachmentRow `db:"reply_to.attachment"`

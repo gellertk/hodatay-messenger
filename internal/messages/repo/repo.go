@@ -60,7 +60,8 @@ func (s *Repo) SendMessage(
 			ra.size AS "reply_to.attachment.size",
 			ra.width AS "reply_to.attachment.width",
 			ra.height AS "reply_to.attachment.height",
-			ra.duration_ms AS "reply_to.attachment.duration_ms"
+			ra.duration_ms AS "reply_to.attachment.duration_ms",
+			ra.waveform_u8 AS "reply_to.attachment.waveform_u8"
 
 		FROM inserted i
 		LEFT JOIN messages rm ON i.reply_to_message_id = rm.id

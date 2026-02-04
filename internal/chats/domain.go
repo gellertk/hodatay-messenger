@@ -17,19 +17,19 @@ type DeleteChatRequest struct {
 }
 
 type ChatRow struct {
-	ChatID                     int64                     `db:"chat_id"`
-	UserID                     int64                     `db:"user_id"`
-	LastMessage                messagesdomain.MessageRow `db:"last_message"`
-	UnreadCount                int64                     `db:"unread_count"`
-	OthersMaxLastReadMessageID int64                     `db:"others_max_last_read_message_id"`
+	ChatID                     int64                             `db:"chat_id"`
+	UserID                     int64                             `db:"user_id"`
+	LastMessage                messagesdomain.ChatLastMessageRow `db:"last_message"`
+	UnreadCount                int64                             `db:"unread_count"`
+	OthersMaxLastReadMessageID int64                             `db:"others_max_last_read_message_id"`
 }
 
 type ChatListItem struct {
-	ID                         int64                  `json:"id" db:"chat_id"`
-	Users                      []userdomain.User      `json:"users"`
-	LastMessage                messagesdomain.Message `json:"last_message" db:"last_message"`
-	UnreadCount                int64                  `json:"unread_count" db:"unread_count"`
-	OthersMaxLastReadMessageID int64                  `json:"others_max_last_read_message_id" db:"others_max_last_read_message_id"`
+	ID                         int64                   `json:"id" db:"chat_id"`
+	Users                      []userdomain.User       `json:"users"`
+	LastMessage                *messagesdomain.Message `json:"last_message" db:"last_message"`
+	UnreadCount                int64                   `json:"unread_count" db:"unread_count"`
+	OthersMaxLastReadMessageID int64                   `json:"others_max_last_read_message_id" db:"others_max_last_read_message_id"`
 }
 
 type ChatInfo struct {

@@ -200,20 +200,22 @@ func (s *Repo) GetChats(ctx context.Context, userID int64) ([]chatsdomain.ChatLi
 SELECT cp.chat_id                                         AS "chat_id",
        cp.user_id                                         AS "user_id",
 
-       COALESCE(lm.id, 0)                                 AS "last_message.id",
-       COALESCE(lm.sender_user_id, 0)                     AS "last_message.sender_user_id",
-       COALESCE(lm.text, '')                              AS "last_message.text",
-       COALESCE(lm.created_at, '1970-01-01'::timestamptz) AS "last_message.created_at",
+       lm.id                                AS "last_message.id",
+       lm.sender_user_id                     AS "last_message.sender_user_id",
+       lm.text                              AS "last_message.text",
+       lm.created_at AS "last_message.created_at",
 
-       COALESCE(att.file_id, '')                          AS "last_message.attachment.file_id",
-       COALESCE(att.content_type, '')                     AS "last_message.attachment.content_type",
-       COALESCE(att.filename, '')                         AS "last_message.attachment.filename",
-       COALESCE(att.size, 0)                              AS "last_message.attachment.size",
-       COALESCE(att.width, 0)                             AS "last_message.attachment.width",
-       COALESCE(att.height, 0)                            AS "last_message.attachment.height",
+       att.file_id                         AS "last_message.attachment.file_id",
+       att.content_type                    AS "last_message.attachment.content_type",
+       att.filename                        AS "last_message.attachment.filename",
+       att.size                            AS "last_message.attachment.size",
+       att.width                           AS "last_message.attachment.width",
+       att.height                          AS "last_message.attachment.height",
+			 att.duration_ms                     AS "last_message.attachment.duration_ms",
+			 att.waveform_u8                     AS "last_message.attachment.waveform_u8",
 
        COALESCE(uc.unread_count, 0)                       AS "unread_count",
-       COALESCE(om.others_max_last_read_message_id, 0)    AS "others_max_last_read_message_id"
+       om.others_max_last_read_message_id    AS "others_max_last_read_message_id"
 
 FROM chat_participants cp
          JOIN my_participation mp ON mp.chat_id = cp.chat_id
@@ -239,7 +241,7 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 
 	var (
 		currentUsers                  []userdomain.User
-		lastMessageRow                messagesdomain.MessageRow
+		lastMessageRow                messagesdomain.ChatLastMessageRow
 		lastMessageAttachments        []uploadsdomain.AttachmentRow
 		lastMessageReplyToAttachments []uploadsdomain.AttachmentRow
 		lastChatID                    int64
@@ -263,11 +265,16 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 		}
 
 		if row.ChatID != lastChatID {
-			lm := messagesdomain.NewMessageFromRow(
-				row.LastMessage,
-				slices.Clone(lastMessageAttachments),
-				slices.Clone(lastMessageReplyToAttachments),
-			)
+			lmRow := messagesdomain.NewMessageFromChatRow(lastMessageRow)
+			var lm *messagesdomain.Message
+			if lmRow != nil {
+				lmsg := messagesdomain.NewMessageFromRow(
+					*lmRow,
+					slices.Clone(lastMessageAttachments),
+					slices.Clone(lastMessageReplyToAttachments),
+				)
+				lm = &lmsg
+			}
 			chats = append(chats, chatsdomain.ChatListItem{
 				ID:                         lastChatID,
 				Users:                      slices.Clone(currentUsers),
@@ -310,11 +317,17 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 	}
 
 	if hasLast {
-		lm := messagesdomain.NewMessageFromRow(
-			lastMessageRow,
-			slices.Clone(lastMessageAttachments),
-			slices.Clone(lastMessageReplyToAttachments),
-		)
+		lmRow := messagesdomain.NewMessageFromChatRow(lastMessageRow)
+		var lm *messagesdomain.Message
+		if lmRow != nil {
+			lmsg := messagesdomain.NewMessageFromRow(
+				*lmRow,
+				slices.Clone(lastMessageAttachments),
+				slices.Clone(lastMessageReplyToAttachments),
+			)
+			lm = &lmsg
+		}
+
 		chats = append(chats, chatsdomain.ChatListItem{
 			ID:                         lastChatID,
 			Users:                      slices.Clone(currentUsers),
