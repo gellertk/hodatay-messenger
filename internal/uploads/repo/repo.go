@@ -1,4 +1,4 @@
-package uploadsrepo
+package repo
 
 import (
 	"context"

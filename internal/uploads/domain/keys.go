@@ -1,4 +1,4 @@
-package uploadsdomain
+package uploads
 
 import (
 	"github.com/google/uuid"

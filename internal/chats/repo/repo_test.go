@@ -1,10 +1,11 @@
-package chatsrepo
+package repo
 
-import(
+import (
 	"context"
-	"github.com/jmoiron/sqlx"
-	userdomain "github.com/kgellert/hodatay-messenger/internal/users/domain"
 	"testing"
+
+	"github.com/jmoiron/sqlx"
+	"github.com/kgellert/hodatay-messenger/internal/users"
 )
 
 func TestRepo_addChatParticipants(t *testing.T) {
@@ -12,12 +13,12 @@ func TestRepo_addChatParticipants(t *testing.T) {
 		name string // description of this test case
 		// Named input parameters for receiver constructor.
 		db        *sqlx.DB
-		usersRepo userdomain.Repo
+		usersRepo users.Repo
 		// Named input parameters for target function.
 		q       sqlx.ExtContext
 		chatID  int64
 		userIDs []int64
-		want    []userdomain.User
+		want    []users.User
 		wantErr bool
 	}{
 		// TODO: Add test cases.

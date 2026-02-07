@@ -1,4 +1,4 @@
-package usersHandlers
+package users
 
 import (
 	"context"
@@ -7,17 +7,16 @@ import (
 	"strconv"
 
 	"github.com/go-chi/render"
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
-	userdomain "github.com/kgellert/hodatay-messenger/internal/users/domain"
-	usersrepo "github.com/kgellert/hodatay-messenger/internal/users/repo"
+	"github.com/kgellert/hodatay-messenger/internal/users"
+	"github.com/kgellert/hodatay-messenger/internal/users/repo"
 )
 
-func New(repo *usersrepo.Repo, log *slog.Logger) *Handler {
+func New(repo *repo.Repo, log *slog.Logger) *Handler {
 	return &Handler{repo, log}
 }
 
 type Handler struct {
-	repo *usersrepo.Repo
+	repo *repo.Repo
 	log *slog.Logger
 }
 
@@ -100,8 +99,7 @@ func (h *Handler) SignInHandler() http.HandlerFunc {
 			Path:  "/",
 		})
 
-		render.JSON(w, r, userdomain.SignInResponse{
-			Response: response.OK(),
+		render.JSON(w, r, users.SignInResponse{
 			User: user,
 		})
 	}

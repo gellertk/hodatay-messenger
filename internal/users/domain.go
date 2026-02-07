@@ -1,9 +1,7 @@
-package userdomain
+package users
 
 import (
 	"context"
-
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
 )
 
 type User struct {
@@ -13,7 +11,6 @@ type User struct {
 }
 
 type SignInResponse struct {
-	response.Response
 	User User `json:"user"`
 }
 

@@ -1,19 +1,10 @@
 package response
 
-type Response struct {
- 	Status string `json:"status"`
-	Error string `json:"error,omitempty"`
+type ErrorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
-const (
-	StatusOK = "OK"
-	StatusError = "Error"
-)
-
-func OK() Response {
-	return Response{Status: StatusOK,}
-}
-
-func Error(msg string) Response {
-	return Response{Status: StatusError, Error: msg}
+type ErrorResponse struct {
+	Error ErrorBody `json:"error"`
 }

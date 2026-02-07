@@ -1,12 +1,14 @@
-package messagesrepo
+package repo
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/kgellert/hodatay-messenger/internal/messages"
 	messagesdomain "github.com/kgellert/hodatay-messenger/internal/messages"
 	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
+	"github.com/lib/pq"
 )
 
 type Repo struct {
@@ -330,4 +332,63 @@ func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.
 		out = append(out, *messagesByID[id])
 	}
 	return out, nil
+}
+
+func (s *Repo) DeleteMessage(ctx context.Context, chatID, messageID int64) error {
+
+	const op = "storage.postgres.message.delete"
+
+	res, err := s.db.ExecContext(
+		ctx,
+		`
+		DELETE FROM messages
+		WHERE chat_id = $1 AND id = $2
+		`,
+		chatID,
+		messageID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return messages.ErrMessageIsNotExist
+	}
+
+	return nil	
+}
+
+func (s *Repo) DeleteMessages(ctx context.Context, chatID int64, messageIDs []int64) ([]int64, error) {
+
+	const op = "storage.postgres.messages.delete"
+
+	var deletedIDs []int64
+	err := s.db.SelectContext(
+		ctx,
+		&deletedIDs,
+		`
+		DELETE FROM messages
+		WHERE chat_id = $1 AND id = ANY($2)
+		RETURNING id
+		`,
+		chatID,
+		pq.Array(messageIDs),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(deletedIDs) == 0 {
+		return nil, messages.ErrMessagesIsNotExist
+	}
+
+	return deletedIDs, nil	
 }

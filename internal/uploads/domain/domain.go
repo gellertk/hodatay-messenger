@@ -1,11 +1,9 @@
-package uploadsdomain
+package uploads
 
 import (
 	"context"
 	"database/sql"
 	"time"
-
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
 )
 
 type UploadStatus string
@@ -136,11 +134,9 @@ type PresignDownloadResponse struct {
 }
 
 type PresignUploadHTTPResponse struct {
-	response.Response
 	PresignUploadResponse `json:"presign_upload"`
 }
 
 type PresignDownloadHTTPResponse struct {
-	response.Response
 	PresignDownloadResponse `json:"presign_download"`
 }

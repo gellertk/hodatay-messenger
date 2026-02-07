@@ -1,4 +1,4 @@
-package messageshandler
+package handler
 
 import (
 	"encoding/json"
@@ -10,9 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
 	"github.com/kgellert/hodatay-messenger/internal/logger/sl"
-	messagesdomain "github.com/kgellert/hodatay-messenger/internal/messages"
+	"github.com/kgellert/hodatay-messenger/internal/messages"
+	"github.com/kgellert/hodatay-messenger/internal/transport/httpapi"
 	uploads "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
 	userhandlers "github.com/kgellert/hodatay-messenger/internal/users/handlers"
 	"github.com/kgellert/hodatay-messenger/internal/ws"
@@ -20,14 +20,14 @@ import (
 )
 
 type Handler struct {
-	messagesRepo   messagesdomain.Repo
+	messagesRepo   messages.Repo
 	uploadsService uploads.Service
 	hub            *hub.Hub
 	log            *slog.Logger
 }
 
 func New(
-	messagesRepo messagesdomain.Repo,
+	messagesRepo messages.Repo,
 	uploadsService uploads.Service,
 	h *hub.Hub,
 	log *slog.Logger,
@@ -48,19 +48,18 @@ func (h *Handler) GetMessages() http.HandlerFunc {
 		chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 		if err != nil || chatID <= 0 {
 			log.Error("invalid chat_id", sl.Err(err))
-			render.JSON(w, r, response.Error("invalid chat_id"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
 		msgs, err := h.messagesRepo.GetMessages(r.Context(), chatID)
 		if err != nil {
 			log.Error("failed to get messages", sl.Err(err))
-			render.JSON(w, r, response.Error("failed to get messages"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
-		render.JSON(w, r, messagesdomain.GetMessagesResponse{
-			Response: response.OK(),
+		render.JSON(w, r, messages.GetMessagesResponse{
 			Messages: msgs,
 		})
 	}
@@ -68,7 +67,7 @@ func (h *Handler) GetMessages() http.HandlerFunc {
 
 func (h *Handler) SendMessage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "handlers.messages.SendMessage"
+		const op = "handlers.messages.send"
 
 		log := h.log.With(
 			slog.String("op", op),
@@ -78,18 +77,20 @@ func (h *Handler) SendMessage() http.HandlerFunc {
 		chatIDStr := chi.URLParam(r, "chatId")
 		chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 		if err != nil || chatID <= 0 {
-			render.JSON(w, r, response.Error("invalid chat_id"))
+			log.Error("invalid chat_id", sl.Err(err))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
-		var req messagesdomain.CreateMessageRequest
+		var req messages.CreateMessageRequest
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
-			render.JSON(w, r, response.Error("invalid body"))
+			log.Error("decode request error", sl.Err(err))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
 		if strings.TrimSpace(req.Text) == "" && len(req.Attachments) == 0 {
-			render.JSON(w, r, response.Error("text or attachments is required"))
+			httpapi.WriteError(w, r, messages.ErrTextOrAttachmentsIsRequired)
 			return
 		}
 
@@ -106,13 +107,18 @@ func (h *Handler) SendMessage() http.HandlerFunc {
 
 		if err != nil {
 			log.Error("failed to send message", sl.Err(err))
-			render.JSON(w, r, response.Error("failed to add message"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
-		render.JSON(w, r, messagesdomain.CreateMessageResponse{
-			Response: response.OK(),
-			Message:  *msg,
+		if msg == nil {
+			log.Error("failed to send message", sl.Err(messages.ErrMessageIsNil))
+			httpapi.WriteError(w, r, err)
+			return
+		}
+
+		render.JSON(w, r, messages.CreateMessageResponse{
+			Message: *msg,
 		})
 
 		evt, err := ws.NewEvent(chatID, ws.MessageNew, ws.MessageNewPayload{Message: *msg})
@@ -133,7 +139,7 @@ func (h *Handler) SendMessage() http.HandlerFunc {
 
 func (h *Handler) SetLastReadMessage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "handlers.messages.SetLastReadMessage"
+		const op = "handlers.messages.set.last_read"
 
 		log := h.log.With(
 			slog.String("op", op),
@@ -143,17 +149,21 @@ func (h *Handler) SetLastReadMessage() http.HandlerFunc {
 		chatIDStr := chi.URLParam(r, "chatId")
 		chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 		if err != nil || chatID <= 0 {
-			render.JSON(w, r, response.Error("invalid chatId"))
+			log.Error("invalid chatId", sl.Err(err))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
-		var req messagesdomain.SetLastReadMessageRequest
+		var req messages.SetLastReadMessageRequest
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
-			render.JSON(w, r, response.Error("invalid body"))
+			log.Error("failed to send message", sl.Err(err))
+			httpapi.WriteError(w, r, err)
 			return
 		}
+
 		if req.LastReadMessageID < 0 {
-			render.JSON(w, r, response.Error("invalid last_read_message_id"))
+			log.Error(messages.ErrInvalidLastReadMessageId.Error(), sl.Err(err))
+			httpapi.WriteError(w, r, messages.ErrInvalidLastReadMessageId)
 			return
 		}
 
@@ -162,16 +172,130 @@ func (h *Handler) SetLastReadMessage() http.HandlerFunc {
 		savedLastRead, err := h.messagesRepo.SetLastReadMessage(r.Context(), chatID, userID, req.LastReadMessageID)
 		if err != nil {
 			log.Error("failed to set last read message", sl.Err(err))
-			render.JSON(w, r, response.Error("failed to set last read message"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
-		render.JSON(w, r, response.OK())
+		render.Status(r, http.StatusNoContent)
 
 		evt, err := ws.NewEvent(chatID, ws.MessageRead, ws.MessageReadPayload{
 			UserID:            userID,
 			LastReadMessageID: savedLastRead,
 		})
+
+		if err != nil {
+			log.Error("failed to build ws event", sl.Err(err))
+			return
+		}
+
+		payload, err := json.Marshal(evt)
+		if err != nil {
+			log.Error("failed to marshal ws event", sl.Err(err))
+			return
+		}
+
+		h.hub.Broadcast(chatID, payload)
+	}
+}
+
+func (h *Handler) DeleteMessage() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const op = "handlers.messages.delete"
+
+		log := h.log.With(
+			slog.String("op", op),
+			slog.String("request_id", middleware.GetReqID(r.Context())),
+		)
+
+		chatIDStr := chi.URLParam(r, "chatId")
+		chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+		if err != nil || chatID <= 0 {
+			log.Error("invalid chat_id", sl.Err(err))
+			httpapi.WriteError(w, r, err)
+			return
+		}
+
+		messageIDStr := chi.URLParam(r, "messageId")
+		messageID, err := strconv.ParseInt(messageIDStr, 10, 64)
+		if err != nil || messageID <= 0 {
+			log.Error("invalid messageId", sl.Err(err))
+			httpapi.WriteError(w, r, err)
+			return
+		}
+
+		err = h.messagesRepo.DeleteMessage(
+			r.Context(),
+			chatID,
+			messageID,
+		)
+
+		if err != nil {
+			log.Error("failed to delete message", sl.Err(err))
+			httpapi.WriteError(w, r, err)
+			return
+		}
+
+		render.Status(r, http.StatusNoContent)
+
+		evt, err := ws.NewEvent(chatID, ws.MessagesDeleted, ws.MessagesDeletePayload{IDs: []int64{messageID}})
+
+		if err != nil {
+			log.Error("failed to build ws event", sl.Err(err))
+			return
+		}
+
+		payload, err := json.Marshal(evt)
+		if err != nil {
+			log.Error("failed to marshal ws event", sl.Err(err))
+			return
+		}
+
+		h.hub.Broadcast(chatID, payload)
+	}
+}
+
+func (h *Handler) DeleteMessages() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const op = "handlers.messages.delete.batch"
+
+		log := h.log.With(
+			slog.String("op", op),
+			slog.String("request_id", middleware.GetReqID(r.Context())),
+		)
+
+		chatIDStr := chi.URLParam(r, "chatId")
+		chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+		if err != nil || chatID <= 0 {
+			log.Error("invalid chat_id", sl.Err(err))
+			httpapi.WriteError(w, r, err)
+			return
+		}
+
+		var req messages.DeleteMessagesRequestResponse
+		err = render.DecodeJSON(r.Body, &req)
+		if err != nil {
+			log.Error("invalid messageIDs", sl.Err(err))
+			httpapi.WriteError(w, r, err)
+		}
+
+		deletedIDs, err := h.messagesRepo.DeleteMessages(
+			r.Context(),
+			chatID,
+			req.MessageIDs,
+		)
+
+		if err != nil {
+			log.Error("failed to delete messages", sl.Err(err))
+			httpapi.WriteError(w, r, err)
+			return
+		}
+
+		render.JSON(w, r, messages.DeleteMessagesRequestResponse{
+			MessageIDs: deletedIDs,
+		})
+
+		evt, err := ws.NewEvent(chatID, ws.MessagesDeleted, ws.MessagesDeletePayload{IDs: deletedIDs})
+
 		if err != nil {
 			log.Error("failed to build ws event", sl.Err(err))
 			return

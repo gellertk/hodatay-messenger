@@ -128,14 +128,17 @@ func main() {
 		r.Post("/chats", chatsHandler.CreateChat())
 		r.Get("/chats", chatsHandler.GetChats())
 		r.Get("/chats/{chatId}", chatsHandler.GetChat())
-		r.Get("/chats/unread-count", chatsHandler.GetUnreadMessagesCount())
-		r.Post("/chats/delete", chatsHandler.DeleteChats())
+		r.Get("/chats/stats/unread-count", chatsHandler.GetUnreadMessagesCount())
+		r.Delete("/chats/{chatId}", chatsHandler.DeleteChat())
+		r.Post("/chats/deleteBatch", chatsHandler.DeleteChats())
 
 		r.Get("/ws", ws.WSHandler(h, log))
 
 		r.Post("/chats/{chatId}/messages", messagesHandler.SendMessage())
 		r.Patch("/chats/{chatId}/messages/read", messagesHandler.SetLastReadMessage())
 		r.Get("/chats/{chatId}/messages", messagesHandler.GetMessages())
+		r.Delete("/chats/{chatId}/messages/{messageId}", messagesHandler.DeleteMessage())
+		r.Post("/chats/{chatId}/messages/deleteBatch", messagesHandler.DeleteMessages())
 
 		r.Post("/uploads/presign-upload", uploadsHandler.PresignUpload())
 		r.Post("/uploads/presign-download", uploadsHandler.PresignDownload())

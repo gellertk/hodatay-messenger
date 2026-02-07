@@ -2,8 +2,12 @@ package ws
 
 import "github.com/kgellert/hodatay-messenger/internal/messages"
 
+type MessagesDeletePayload struct {
+	IDs []int64 `json:"ids"`
+}
+
 type MessageNewPayload struct {
-	Message messagesdomain.Message `json:"message"`
+	Message messages.Message `json:"message"`
 }
 
 type MessageReadPayload struct {

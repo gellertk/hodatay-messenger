@@ -1,34 +1,28 @@
-package chatsrepo
+package repo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/jmoiron/sqlx"
-	chatsdomain "github.com/kgellert/hodatay-messenger/internal/chats"
+	"github.com/kgellert/hodatay-messenger/internal/chats"
 	messagesdomain "github.com/kgellert/hodatay-messenger/internal/messages"
 	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
-	userdomain "github.com/kgellert/hodatay-messenger/internal/users/domain"
+	"github.com/kgellert/hodatay-messenger/internal/users"
 	"github.com/lib/pq"
-)
-
-var (
-	ErrEmptyParticipants = errors.New("no participants provided")
-	ErrChatsNotFound     = errors.New("chats not found")
 )
 
 type Repo struct {
 	db        *sqlx.DB
-	usersRepo userdomain.Repo
+	usersRepo users.Repo
 }
 
-func New(db *sqlx.DB, usersRepo userdomain.Repo) *Repo {
+func New(db *sqlx.DB, usersRepo users.Repo) *Repo {
 	return &Repo{db: db, usersRepo: usersRepo}
 }
 
-func (s *Repo) CreateChat(ctx context.Context, userIDs []int64) (*chatsdomain.ChatInfo, error) {
+func (s *Repo) CreateChat(ctx context.Context, userIDs []int64) (*chats.ChatInfo, error) {
 	const op = "storage.postgres.CreateChat"
 
 	tx, err := s.db.BeginTxx(ctx, nil)
@@ -58,7 +52,7 @@ func (s *Repo) CreateChat(ctx context.Context, userIDs []int64) (*chatsdomain.Ch
 		return nil, fmt.Errorf("%s: commit tx: %w", op, err)
 	}
 
-	chatInfo := &chatsdomain.ChatInfo{
+	chatInfo := &chats.ChatInfo{
 		ID:    chatID,
 		Users: users,
 	}
@@ -66,7 +60,7 @@ func (s *Repo) CreateChat(ctx context.Context, userIDs []int64) (*chatsdomain.Ch
 	return chatInfo, nil
 }
 
-func (s *Repo) AddChatParticipants(ctx context.Context, chatID int64, userIDs []int64) ([]userdomain.User, error) {
+func (s *Repo) AddChatParticipants(ctx context.Context, chatID int64, userIDs []int64) ([]users.User, error) {
 	return s.addChatParticipants(ctx, s.db, chatID, userIDs)
 }
 
@@ -75,12 +69,12 @@ func (s *Repo) addChatParticipants(
 	q sqlx.ExtContext,
 	chatID int64,
 	userIDs []int64,
-) ([]userdomain.User, error) {
+) ([]users.User, error) {
 
 	const op = "storage.postgres.AddChatParticipants"
 
 	if len(userIDs) == 0 {
-		return nil, ErrEmptyParticipants
+		return nil, chats.ErrEmptyParticipants
 	}
 
 	userIDs = uniquePositiveInts(userIDs)
@@ -91,7 +85,7 @@ func (s *Repo) addChatParticipants(
 			ON CONFLICT (chat_id, user_id) DO NOTHING
     `
 
-	users := make([]userdomain.User, 0, len(userIDs))
+	users := make([]users.User, 0, len(userIDs))
 
 	for _, userID := range userIDs {
 		if _, err := q.ExecContext(ctx, query, chatID, userID); err != nil {
@@ -135,7 +129,7 @@ func containsAttachment(attachments []uploadsdomain.AttachmentRow, att uploadsdo
 	return false
 }
 
-func containsUser(users []userdomain.User, user userdomain.User) bool {
+func containsUser(users []users.User, user users.User) bool {
 	for _, u := range users {
 		if u.ID == user.ID {
 			return true
@@ -144,7 +138,7 @@ func containsUser(users []userdomain.User, user userdomain.User) bool {
 	return false
 }
 
-func (s *Repo) GetChats(ctx context.Context, userID int64) ([]chatsdomain.ChatListItem, error) {
+func (s *Repo) GetChats(ctx context.Context, userID int64) ([]chats.ChatListItem, error) {
 	const op = "storage.postgres.GetChats"
 
 	rows, err := s.db.QueryxContext(
@@ -237,10 +231,10 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 	}
 	defer rows.Close()
 
-	chats := []chatsdomain.ChatListItem{}
+	chatList := []chats.ChatListItem{}
 
 	var (
-		currentUsers                  []userdomain.User
+		currentUsers                  []users.User
 		lastMessageRow                messagesdomain.ChatLastMessageRow
 		lastMessageAttachments        []uploadsdomain.AttachmentRow
 		lastMessageReplyToAttachments []uploadsdomain.AttachmentRow
@@ -251,7 +245,7 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 	)
 
 	for rows.Next() {
-		var row chatsdomain.ChatRow
+		var row chats.ChatRow
 		if err := rows.StructScan(&row); err != nil {
 			return nil, fmt.Errorf("%s: scan: %w", op, err)
 		}
@@ -275,7 +269,7 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 				)
 				lm = &lmsg
 			}
-			chats = append(chats, chatsdomain.ChatListItem{
+			chatList = append(chatList, chats.ChatListItem{
 				ID:                         lastChatID,
 				Users:                      slices.Clone(currentUsers),
 				LastMessage:                lm,
@@ -328,7 +322,7 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 			lm = &lmsg
 		}
 
-		chats = append(chats, chatsdomain.ChatListItem{
+		chatList = append(chatList, chats.ChatListItem{
 			ID:                         lastChatID,
 			Users:                      slices.Clone(currentUsers),
 			LastMessage:                lm,
@@ -337,10 +331,10 @@ ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
 		})
 	}
 
-	return chats, nil
+	return chatList, nil
 }
 
-func (s *Repo) GetChat(ctx context.Context, chatID int64) (*chatsdomain.ChatInfo, error) {
+func (s *Repo) GetChat(ctx context.Context, chatID int64) (*chats.ChatInfo, error) {
 	const op = "storage.postgres.GetChat"
 
 	rows, err := s.db.QueryContext(
@@ -382,7 +376,7 @@ func (s *Repo) GetChat(ctx context.Context, chatID int64) (*chatsdomain.ChatInfo
 		return nil, fmt.Errorf("%s: get users error: %w", op, err)
 	}
 
-	return &chatsdomain.ChatInfo{
+	return &chats.ChatInfo{
 		ID:    foundChatID,
 		Users: users,
 	}, nil
@@ -434,8 +428,37 @@ func (s *Repo) DeleteChats(ctx context.Context, chatIDs []int64) ([]int64, error
 	}
 
 	if len(deletedChatIds) == 0 {
-		return []int64{}, ErrChatsNotFound
+		return []int64{}, chats.ErrChatsNotFound
 	}
 
 	return deletedChatIds, nil
+}
+
+func (s *Repo) DeleteChat(ctx context.Context, chatID int64) error {
+
+	const op = "storage.postgres.DeleteChat"
+
+	res, err := s.db.ExecContext(
+		ctx,
+		`
+		DELETE FROM chats 
+		WHERE id = $1
+		`,
+		chatID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return chats.ErrChatNotFound
+	}
+
+	return nil
 }

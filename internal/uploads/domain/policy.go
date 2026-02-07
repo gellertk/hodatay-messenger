@@ -1,4 +1,4 @@
-package uploadsdomain
+package uploads
 
 var allowedContentTypes = map[string]string{
 	"image/jpeg":     ".jpg",

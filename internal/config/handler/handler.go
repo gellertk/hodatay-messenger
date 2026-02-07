@@ -1,4 +1,4 @@
-package configHandler
+package handler
 
 import (
 	"log/slog"
@@ -7,7 +7,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/kgellert/hodatay-messenger/internal/config"
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
 )
 
 func New(config config.Config, logger *slog.Logger) *Handler {
@@ -15,7 +14,6 @@ func New(config config.Config, logger *slog.Logger) *Handler {
 }
 
 type appConfigResponse struct {
-	response.Response
 	Config config.Config `json:"config"`
 }
 
@@ -35,11 +33,8 @@ func (h *Handler) GetConfig() http.HandlerFunc {
 
 		log.Debug("config requested")
 
-		resp := appConfigResponse{
-			Response: response.OK(),
+		render.JSON(w, r, appConfigResponse{
 			Config:   h.Config,
-		}
-
-		render.JSON(w, r, resp)
+		})
 	}
 }

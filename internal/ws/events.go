@@ -8,8 +8,9 @@ import (
 type EventType string
 
 const (
-	MessageNew  EventType = "message.new"
-	MessageRead EventType = "message.read"
+	MessageNew      EventType = "message.new"
+	MessageRead     EventType = "message.read"
+	MessagesDeleted EventType = "message.deleted"
 )
 
 type ServerEvent struct {
@@ -29,8 +30,8 @@ func NewEvent(chatID int64, typ EventType, payload any) (ServerEvent, error) {
 		raw = b
 	}
 	return ServerEvent{
-		Type: typ,
+		Type:   typ,
 		ChatID: chatID,
-		Data: raw,
+		Data:   raw,
 	}, nil
 }

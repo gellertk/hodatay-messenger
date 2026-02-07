@@ -12,8 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/kgellert/hodatay-messenger/internal/config"
-	media "github.com/kgellert/hodatay-messenger/internal/uploads"
 	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
+	"github.com/kgellert/hodatay-messenger/internal/uploads/media"
 )
 
 func New(bucket string, presigner *s3.PresignClient, s3Client *s3.Client, repo uploadsdomain.Repo, presignConfig config.PresignTTLConfig) uploadsdomain.Service {

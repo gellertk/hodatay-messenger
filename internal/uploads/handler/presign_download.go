@@ -1,4 +1,4 @@
-package uploadshandler
+package handler
 
 import (
 	"log/slog"
@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
 	"github.com/kgellert/hodatay-messenger/internal/logger/sl"
+	"github.com/kgellert/hodatay-messenger/internal/transport/httpapi"
+	errors "github.com/kgellert/hodatay-messenger/internal/uploads"
 	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
 )
 
@@ -23,13 +24,13 @@ func (h *UploadsHandler) PresignDownload() http.HandlerFunc {
 		var req uploadsdomain.PresignDownloadRequest
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
 			log.Error("invalid body", sl.Err(err))
-			render.JSON(w, r, response.Error("invalid body"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
 		if req.FileID == "" {
 			log.Error("invalid file_id")
-			render.JSON(w, r, response.Error("invalid file_id"))
+			httpapi.WriteError(w, r, errors.ErrInvalidFileId)
 			return
 		}
 
@@ -37,7 +38,7 @@ func (h *UploadsHandler) PresignDownload() http.HandlerFunc {
 
 		if err != nil {
 			log.Error("presign upload error", sl.Err(err))
-			render.JSON(w, r, response.Error("presign upload error"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
@@ -46,7 +47,6 @@ func (h *UploadsHandler) PresignDownload() http.HandlerFunc {
 		}
 
 		render.JSON(w, r, uploadsdomain.PresignDownloadHTTPResponse{
-			Response:                response.OK(),
 			PresignDownloadResponse: presignResponse,
 		})
 	}

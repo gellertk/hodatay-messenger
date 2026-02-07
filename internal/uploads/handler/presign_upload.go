@@ -1,4 +1,4 @@
-package uploadshandler
+package handler
 
 import (
 	"log/slog"
@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
 	"github.com/kgellert/hodatay-messenger/internal/logger/sl"
+	"github.com/kgellert/hodatay-messenger/internal/transport/httpapi"
+	"github.com/kgellert/hodatay-messenger/internal/uploads"
 	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
 	userhandlers "github.com/kgellert/hodatay-messenger/internal/users/handlers"
 )
@@ -36,22 +37,19 @@ func (h *UploadsHandler) PresignUpload() http.HandlerFunc {
 		var req uploadsdomain.PresignUploadRequest
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
 			log.Warn("failed to decode request", sl.Err(err))
-			w.WriteHeader(http.StatusBadRequest)
-			render.JSON(w, r, response.Error("invalid request body"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
-		// Валидация ContentType
 		if req.ContentType == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			render.JSON(w, r, response.Error("content_type is required"))
+			httpapi.WriteError(w, r, uploads.ErrContentTypeIsRequired)
 			return
 		}
 
 		if !uploadsdomain.IsValidContentType(req.ContentType) {
 			log.Warn("invalid content type", slog.String("content_type", req.ContentType))
-			w.WriteHeader(http.StatusBadRequest)
-			render.JSON(w, r, response.Error("content_type not allowed"))
+			httpapi.WriteError(w, r, uploads.ErrInvalidContentType)
 			return
 		}
 
@@ -67,13 +65,11 @@ func (h *UploadsHandler) PresignUpload() http.HandlerFunc {
 		pInfo, err := h.service.PresignUpload(r.Context(), userID, req.ContentType, req.Filename)
 		if err != nil {
 			log.Error("failed to presign upload", sl.Err(err))
-			w.WriteHeader(http.StatusInternalServerError)
-			render.JSON(w, r, response.Error("failed to generate upload url"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
 		render.JSON(w, r, uploadsdomain.PresignUploadHTTPResponse{
-			Response: response.OK(),
 			PresignUploadResponse: uploadsdomain.PresignUploadResponse{
 				FileID:    pInfo.FileID,
 				UploadURL: pInfo.URL,
@@ -95,7 +91,7 @@ func (h *UploadsHandler) ConfirmUpload() http.HandlerFunc {
 		var req uploadsdomain.ConfirmUploadRequest
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
 			log.Error("invalid body", sl.Err(err))
-			render.JSON(w, r, response.Error("invalid body"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
@@ -105,10 +101,10 @@ func (h *UploadsHandler) ConfirmUpload() http.HandlerFunc {
 
 		if err != nil {
 			log.Error("presign upload error", sl.Err(err))
-			render.JSON(w, r, response.Error("presign upload error"))
+			httpapi.WriteError(w, r, err)
 			return
 		}
 
-		render.JSON(w, r, response.OK())
+		render.Status(r, http.StatusNoContent)
 	}
 }

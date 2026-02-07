@@ -1,11 +1,10 @@
-package messagesdomain
+package messages
 
 import (
 	"context"
 	"database/sql"
 	"time"
 
-	response "github.com/kgellert/hodatay-messenger/internal/lib"
 	uploadsdomain "github.com/kgellert/hodatay-messenger/internal/uploads/domain"
 )
 
@@ -13,6 +12,8 @@ type Repo interface {
 	SendMessage(ctx context.Context, chatID, userID int64, text string, attachments []CreateMessageAttachment, replyToMessageID *int64) (*Message, error)
 	GetMessages(ctx context.Context, chatID int64) ([]Message, error)
 	SetLastReadMessage(ctx context.Context, chatID, userID, lastReadMessageID int64) (int64, error)
+	DeleteMessage(ctx context.Context, chatID, messageID int64) error
+	DeleteMessages(ctx context.Context, chatID int64, messageIDs []int64) ([]int64, error)
 }
 
 func NewMessageFromRow(row MessageRow, attachments []uploadsdomain.AttachmentRow, replyAttachments []uploadsdomain.AttachmentRow) Message {
@@ -73,6 +74,10 @@ type Message struct {
 	ReplyTo      *Message                   `json:"reply_to" db:"reply_to"`
 }
 
+type DeleteMessagesRequestResponse struct {
+	MessageIDs []int64 `json:"message_ids"`
+}
+
 type SetLastReadMessageRequest struct {
 	LastReadMessageID int64 `json:"last_read_message_id"`
 }
@@ -88,12 +93,10 @@ type CreateMessageAttachment struct {
 }
 
 type CreateMessageResponse struct {
-	response.Response
 	Message `json:"message"`
 }
 
 type GetMessagesResponse struct {
-	response.Response
 	Messages []Message `json:"messages"`
 }
 
