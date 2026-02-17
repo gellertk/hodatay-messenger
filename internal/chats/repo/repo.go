@@ -145,84 +145,84 @@ func (s *Repo) GetChats(ctx context.Context, userID int64) ([]chats.ChatListItem
 		ctx,
 		`
 		WITH my_participation AS (SELECT chat_id,
-                                 user_id,
-                                 CASE
-                                     WHEN last_read_message_id IS NULL OR last_read_message_id < 0 THEN 0
-                                     ELSE last_read_message_id
-                                     END AS last_read_message_id
+                                user_id,
+                                CASE
+                                    WHEN last_read_message_id IS NULL OR last_read_message_id < 0 THEN 0
+                                    ELSE last_read_message_id
+                                    END AS last_read_message_id
                           FROM chat_participants
                           WHERE user_id = $1),
 
-     last_message AS (SELECT chat_id,
-                             id,
-                             sender_user_id,
-                             text,
-                             created_at
+    last_message AS (SELECT chat_id,
+                            id,
+                            sender_user_id,
+                            text,
+                            created_at
                       FROM (SELECT m.chat_id,
-                                   m.id,
-                                   m.sender_user_id,
-                                   m.text,
-                                   m.created_at,
-                                   ROW_NUMBER() OVER (
-                                       PARTITION BY m.chat_id
-                                       ORDER BY m.created_at DESC, m.id DESC
-                                       ) AS rn
+                                  m.id,
+                                  m.sender_user_id,
+                                  m.text,
+                                  m.created_at,
+                                  ROW_NUMBER() OVER (
+                                      PARTITION BY m.chat_id
+                                      ORDER BY m.created_at DESC, m.id DESC
+                                      ) AS rn
                             FROM messages m)
                       WHERE rn = 1),
 
-     unread_counts AS (SELECT mp.chat_id,
+    unread_counts AS (SELECT mp.chat_id,
                               COUNT(*) AS unread_count
-                       FROM messages m
+                      FROM messages m
                                 JOIN my_participation mp ON mp.chat_id = m.chat_id
-                       WHERE m.id > mp.last_read_message_id
-                         AND m.sender_user_id <> mp.user_id
-                       GROUP BY mp.chat_id),
+                      WHERE m.id > mp.last_read_message_id
+                        AND m.sender_user_id <> mp.user_id
+                      GROUP BY mp.chat_id),
 
-     others_max_read AS (SELECT cp.chat_id,
+    others_max_read AS (SELECT cp.chat_id,
                                 COALESCE(MAX(
-                                                 CASE
-                                                     WHEN cp.last_read_message_id IS NULL OR cp.last_read_message_id < 0
-                                                         THEN 0
-                                                     ELSE cp.last_read_message_id
-                                                     END
-                                         ), 0) AS others_max_last_read_message_id
-                         FROM chat_participants cp
+                                                CASE
+                                                    WHEN cp.last_read_message_id IS NULL OR cp.last_read_message_id < 0
+                                                        THEN 0
+                                                    ELSE cp.last_read_message_id
+                                                    END
+                                        ), 0) AS others_max_last_read_message_id
+                        FROM chat_participants cp
                                   JOIN my_participation mp ON mp.chat_id = cp.chat_id
-                         WHERE cp.user_id <> mp.user_id
-                         GROUP BY cp.chat_id)
+                        WHERE cp.user_id <> mp.user_id
+                        GROUP BY cp.chat_id)
 
-SELECT cp.chat_id                                         AS "chat_id",
-       cp.user_id                                         AS "user_id",
+		SELECT cp.chat_id                                         AS "chat_id",
+      cp.user_id                                         AS "user_id",
 
-       lm.id                                AS "last_message.id",
-       lm.sender_user_id                     AS "last_message.sender_user_id",
-       lm.text                              AS "last_message.text",
-       lm.created_at AS "last_message.created_at",
+      lm.id                                AS "last_message.id",
+      lm.sender_user_id                     AS "last_message.sender_user_id",
+      lm.text                              AS "last_message.text",
+      lm.created_at AS "last_message.created_at",
 
-       att.file_id                         AS "last_message.attachment.file_id",
-       att.content_type                    AS "last_message.attachment.content_type",
-       att.filename                        AS "last_message.attachment.filename",
-       att.size                            AS "last_message.attachment.size",
-       att.width                           AS "last_message.attachment.width",
-       att.height                          AS "last_message.attachment.height",
-			 att.duration_ms                     AS "last_message.attachment.duration_ms",
-			 att.waveform_u8                     AS "last_message.attachment.waveform_u8",
+      att.file_id                         AS "last_message.attachment.file_id",
+      att.content_type                    AS "last_message.attachment.content_type",
+      att.filename                        AS "last_message.attachment.filename",
+      att.size                            AS "last_message.attachment.size",
+      att.width                           AS "last_message.attachment.width",
+      att.height                          AS "last_message.attachment.height",
+			att.duration_ms                     AS "last_message.attachment.duration_ms",
+			att.waveform_u8                     AS "last_message.attachment.waveform_u8",
 
-       COALESCE(uc.unread_count, 0)                       AS "unread_count",
-       om.others_max_last_read_message_id    AS "others_max_last_read_message_id"
+      COALESCE(uc.unread_count, 0)                       AS "unread_count",
+      om.others_max_last_read_message_id    AS "others_max_last_read_message_id"
 
-FROM chat_participants cp
-         JOIN my_participation mp ON mp.chat_id = cp.chat_id
-         LEFT JOIN last_message lm ON lm.chat_id = cp.chat_id
-         LEFT JOIN unread_counts uc ON uc.chat_id = cp.chat_id
-         LEFT JOIN others_max_read om ON om.chat_id = cp.chat_id
-         LEFT JOIN attachments att ON att.message_id = lm.id
+		FROM chat_participants cp
+        JOIN my_participation mp ON mp.chat_id = cp.chat_id
+        LEFT JOIN last_message lm ON lm.chat_id = cp.chat_id
+        LEFT JOIN unread_counts uc ON uc.chat_id = cp.chat_id
+        LEFT JOIN others_max_read om ON om.chat_id = cp.chat_id
+        LEFT JOIN attachments att ON att.message_id = lm.id
 
-ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
-         lm.created_at DESC,
-         lm.id DESC,
-         cp.chat_id,
-         cp.user_id
+		ORDER BY CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
+        lm.created_at DESC,
+        lm.id DESC,
+        cp.chat_id,
+        cp.user_id
 		`,
 		userID,
 	)

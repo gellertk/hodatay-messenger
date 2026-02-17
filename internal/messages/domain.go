@@ -10,7 +10,7 @@ import (
 
 type Repo interface {
 	SendMessage(ctx context.Context, chatID, userID int64, text string, attachments []CreateMessageAttachment, replyToMessageID *int64) (*Message, error)
-	GetMessages(ctx context.Context, chatID int64) ([]Message, error)
+	GetMessages(ctx context.Context, chatID int64, limit, offset int) ([]Message, error)
 	SetLastReadMessage(ctx context.Context, chatID, userID, lastReadMessageID int64) (int64, error)
 	DeleteMessage(ctx context.Context, chatID, messageID int64) error
 	DeleteMessages(ctx context.Context, chatID int64, messageIDs []int64) ([]int64, error)

@@ -203,7 +203,7 @@ func (s *Repo) SetLastReadMessage(ctx context.Context, chatID, userID, lastReadM
 	}
 
 	if rows, _ := res.RowsAffected(); rows == 0 {
-		return 0, fmt.Errorf("%s: participant not found (chat_id=%d user_id=%d)", op, chatID, userID)
+		return 0, fmt.Errorf("%s: chat or participant not found (chat_id=%d user_id=%d)", op, chatID, userID)
 	}
 
 	if err := tx.GetContext(ctx, &saved, `
@@ -224,43 +224,56 @@ func (s *Repo) SetLastReadMessage(ctx context.Context, chatID, userID, lastReadM
 	return saved, nil
 }
 
-func (s *Repo) GetMessages(ctx context.Context, chatID int64) ([]messagesdomain.Message, error) {
+func (s *Repo) GetMessages(ctx context.Context, chatID int64, limit, offset int) ([]messagesdomain.Message, error) {
 	const op = "storage.postgres.GetMessages"
 
 	rows, err := s.db.QueryxContext(ctx, `
-		SELECT 
-			m.id, m.sender_user_id, m.text, m.created_at,
+		WITH base_messages AS (
+			SELECT id, sender_user_id, text, created_at, reply_to_message_id
+			FROM messages
+			WHERE chat_id = $1
+			ORDER BY created_at DESC
+			LIMIT $2 OFFSET $3
+		),
+		m AS (
+			SELECT
+				bm.id,
+				bm.sender_user_id,
+				bm.text,
+				bm.created_at,
 
-			rm.id AS "reply_to.id",
-			rm.sender_user_id AS "reply_to.sender_user_id",
-			rm.text AS "reply_to.text",
-			rm.created_at AS "reply_to.created_at",
+				rm.id             AS "reply_to.id",
+				rm.sender_user_id AS "reply_to.sender_user_id",
+				rm.text           AS "reply_to.text",
+				rm.created_at     AS "reply_to.created_at",
 
-			a.id AS "attachment.id",
-			a.file_id AS "attachment.file_id",
-			a.content_type AS "attachment.content_type",
-			a.filename AS "attachment.filename",
-			a.size AS "attachment.size",
-			a.width AS "attachment.width",
-			a.height AS "attachment.height",
-			a.duration_ms AS "attachment.duration_ms",
-			a.waveform_u8 AS "attachment.waveform_u8",
+				a.id              AS "attachment.id",
+				a.file_id         AS "attachment.file_id",
+				a.content_type    AS "attachment.content_type",
+				a.filename        AS "attachment.filename",
+				a.size            AS "attachment.size",
+				a.width           AS "attachment.width",
+				a.height          AS "attachment.height",
+				a.duration_ms     AS "attachment.duration_ms",
+				a.waveform_u8     AS "attachment.waveform_u8",
 
-			ra.id AS "reply_to.attachment.id",
-			ra.file_id AS "reply_to.attachment.file_id",
-			ra.content_type AS "reply_to.attachment.content_type",
-			ra.filename AS "reply_to.attachment.filename",
-			ra.size AS "reply_to.attachment.size",
-			ra.width AS "reply_to.attachment.width",
-			ra.height AS "reply_to.attachment.height",
-			ra.waveform_u8 AS "reply_to.attachment.waveform_u8"
-		FROM messages m
-		LEFT JOIN messages rm ON m.reply_to_message_id = rm.id
-		LEFT JOIN attachments a ON a.message_id = m.id
-		LEFT JOIN attachments ra ON ra.message_id = rm.id
-		WHERE m.chat_id = $1
-		ORDER BY m.created_at ASC
-	`, chatID)
+				ra.id             AS "reply_to.attachment.id",
+				ra.file_id        AS "reply_to.attachment.file_id",
+				ra.content_type   AS "reply_to.attachment.content_type",
+				ra.filename       AS "reply_to.attachment.filename",
+				ra.size           AS "reply_to.attachment.size",
+				ra.width          AS "reply_to.attachment.width",
+				ra.height         AS "reply_to.attachment.height",
+				ra.waveform_u8    AS "reply_to.attachment.waveform_u8"
+			FROM base_messages bm
+			LEFT JOIN messages rm ON bm.reply_to_message_id = rm.id
+			LEFT JOIN attachments a ON a.message_id = bm.id
+			LEFT JOIN attachments ra ON ra.message_id = rm.id
+		)
+	SELECT *
+	FROM m
+	ORDER BY m.created_at ASC
+	`, chatID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

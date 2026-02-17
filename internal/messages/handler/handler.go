@@ -38,6 +38,9 @@ func New(
 func (h *Handler) GetMessages() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.messages.GetMessages"
+		const defaultLimit = 20
+		const defaultPage = 0
+		const maxLimit = 100
 
 		log := h.log.With(
 			slog.String("op", op),
@@ -52,7 +55,28 @@ func (h *Handler) GetMessages() http.HandlerFunc {
 			return
 		}
 
-		msgs, err := h.messagesRepo.GetMessages(r.Context(), chatID)
+		l := defaultLimit
+		if lStr := r.URL.Query().Get("limit"); lStr != "" {
+			if parsed, err := strconv.Atoi(lStr); err == nil && parsed > 0 {
+				l = min(parsed, maxLimit)
+			} else {
+				httpapi.WriteError(w, r, messages.ErrInvalidLimit)
+				return
+			}
+		}
+
+		p := defaultPage
+		if pStr := r.URL.Query().Get("page"); pStr != "" {
+			if parsed, err := strconv.Atoi(pStr); err == nil && parsed >= 0 {
+				p = parsed
+			} else {
+				httpapi.WriteError(w, r, messages.ErrInvalidPage)
+				return
+			}
+		}
+
+		offset := p * l
+		msgs, err := h.messagesRepo.GetMessages(r.Context(), chatID, l, offset)
 		if err != nil {
 			log.Error("failed to get messages", sl.Err(err))
 			httpapi.WriteError(w, r, err)
